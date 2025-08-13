@@ -1,43 +1,32 @@
-import os
-from dotenv import load_dotenv
-import time
 import json
-import datetime as dt
-from flask import Flask, request, jsonify, render_template
+import os
+from datetime import datetime
+
+import pandas as pd
+import plaid
+from dotenv import load_dotenv
+from flask import Flask, jsonify, render_template, request
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
-import plaid
 from plaid.api import plaid_api
 from plaid.model.country_code import CountryCode
-from plaid.model.link_token_create_request import LinkTokenCreateRequest
-from plaid.model.link_token_create_request_user import LinkTokenCreateRequestUser
-from plaid.model.products import Products
 from plaid.model.item_public_token_exchange_request import (
     ItemPublicTokenExchangeRequest,
 )
+from plaid.model.link_token_create_request import LinkTokenCreateRequest
+from plaid.model.link_token_create_request_user import LinkTokenCreateRequestUser
 from plaid.model.transactions_sync_request import TransactionsSyncRequest
-import pandas as pd
-from datetime import datetime
-import json
 
-# Load environment variables from the .env file
 load_dotenv()
 
-# Load environment variables
 PLAID_CLIENT_ID = os.getenv("PLAID_CLIENT_ID")
 PLAID_SECRET = os.getenv("PLAID_SECRET")
 PLAID_ENV = os.getenv("PLAID_ENV", "production")
-PLAID_PRODUCTS = os.getenv("PLAID_PRODUCTS", "transactions").split(",")
-PLAID_COUNTRY_CODES = os.getenv("PLAID_COUNTRY_CODES", "US").split(",")
 PLAID_WEBHOOK_URL = os.getenv("PLAID_WEBHOOK_URL")
 PLAID_REDIRECT_URI = os.getenv("PLAID_REDIRECT_URI")
 PLAID_CLIENT_NAME = os.getenv("PLAID_CLIENT_NAME", "YourAppName")
 PORT = int(os.getenv("PORT", 8000))
 DATABASE_URL = os.getenv("DATABASE_URL")
-
-print("PLAID_CLIENT_ID:", PLAID_CLIENT_ID)
-print("PLAID_SECRET:", PLAID_SECRET)
-print("PLAID_ENV:", PLAID_ENV)
 
 # Set up the Plaid environment
 host = (
@@ -45,6 +34,7 @@ host = (
     if PLAID_ENV == "sandbox"
     else plaid.Environment.Production
 )
+
 
 # Configure the Plaid client
 configuration = plaid.Configuration(
@@ -58,8 +48,6 @@ configuration = plaid.Configuration(
 
 api_client = plaid.ApiClient(configuration)
 client = plaid_api.PlaidApi(api_client)
-
-products = [Products(product) for product in PLAID_PRODUCTS]
 
 # Initialize Flask application
 app = Flask(__name__)
@@ -88,21 +76,17 @@ def index():
 
 @app.route("/api/create_link_token", methods=["POST"])
 def create_link_token():
-    try:
-        request = LinkTokenCreateRequest(
-            client_name=PLAID_CLIENT_NAME,
-            country_codes=[CountryCode(code) for code in PLAID_COUNTRY_CODES],
-            language="en",
-            user=LinkTokenCreateRequestUser(client_user_id="user"),
-            products=products,
-            webhook=PLAID_WEBHOOK_URL,
-            redirect_uri=PLAID_REDIRECT_URI,
-        )
-        response = client.link_token_create(request)
-        return jsonify(response.to_dict())
-    except plaid.ApiException as e:
-        print(json.loads(e.body))  # Debugging statement
-        return jsonify(json.loads(e.body))
+    request = LinkTokenCreateRequest(
+        client_name=PLAID_CLIENT_NAME,
+        country_codes=[CountryCode("US")],
+        language="en",
+        user=LinkTokenCreateRequestUser(client_user_id="user"),
+        products="transactions",
+        webhook=PLAID_WEBHOOK_URL,
+        redirect_uri=PLAID_REDIRECT_URI,
+    )
+    response = client.link_token_create(request)
+    return jsonify(response.to_dict())
 
 
 def exchange_public_token(public_token):
@@ -112,7 +96,6 @@ def exchange_public_token(public_token):
         access_token = exchange_response["access_token"]
         item_id = exchange_response["item_id"]
 
-        # Save the access token and item ID in the database
         user = User.query.first()
         if user is None:
             user = User(access_token=access_token, item_id=item_id)

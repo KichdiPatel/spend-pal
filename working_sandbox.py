@@ -1,32 +1,30 @@
-from flask import Flask, render_template, request, jsonify
+import json
+import logging
+import math
+import os
+from datetime import datetime, timezone
+from threading import Timer
+
+import pandas as pd
+import plaid
+import psycopg2
+from dotenv import load_dotenv
+from flask import Flask, jsonify, render_template, request
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
-from plaid.model.link_token_create_request import LinkTokenCreateRequest
-from plaid.model.link_token_create_request_user import LinkTokenCreateRequestUser
-from plaid.model.products import Products
+from plaid.api import plaid_api
+from plaid.model.country_code import CountryCode  # Import CountryCode
 from plaid.model.item_public_token_exchange_request import (
     ItemPublicTokenExchangeRequest,
 )
+from plaid.model.link_token_create_request import LinkTokenCreateRequest
+from plaid.model.link_token_create_request_user import LinkTokenCreateRequestUser
+from plaid.model.products import Products
 from plaid.model.transactions_sync_request import TransactionsSyncRequest
-from plaid.model.country_code import CountryCode  # Import CountryCode
-import pandas as pd
-from datetime import datetime, timezone
-from sqlalchemy.dialects.postgresql import ARRAY
-import datetime as dt
+from psycopg2 import OperationalError
 from sqlalchemy import Boolean
-from threading import Timer
 from twilio.rest import Client
 from twilio.twiml.messaging_response import MessagingResponse
-import os
-from dotenv import load_dotenv
-import plaid
-from plaid.api import plaid_api
-import logging
-import psycopg2
-from psycopg2 import OperationalError
-import json
-import math
-
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
