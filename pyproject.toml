@@ -1,0 +1,38 @@
+[tool.poetry]
+name = "spend-pal-api"
+version = "0.1.0"
+description = "A financial transaction management API with Plaid integration and SMS reconciliation"
+authors = ["Your Name <your.email@example.com>"]
+readme = "README.md"
+packages = [{include = "app"}, {include = "config"}, {include = "models"}, {include = "server"}, {include = "utils"}]
+
+[tool.poetry.dependencies]
+python = "^3.9"
+flask = "^3.0.0"
+plaid-python = "^19.0.0"
+python-dotenv = "^1.0.0"
+flask-cors = "^4.0.0"
+flask-sqlalchemy = "^3.0.0"
+twilio = "^8.0.0"
+gunicorn = "^21.0.0"
+psycopg2-binary = "^2.9.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.0.0"
+black = "^23.0.0"
+flake8 = "^6.0.0"
+mypy = "^1.0.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length = 88
+target-version = ['py39']
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
