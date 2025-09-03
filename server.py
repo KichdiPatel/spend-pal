@@ -5,7 +5,7 @@ from plaid.api import plaid_api
 from twilio.rest import Client
 
 import config
-from models import db
+from models.database import db
 
 # Set up the Plaid environment
 host = (

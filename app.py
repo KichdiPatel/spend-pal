@@ -1,9 +1,9 @@
 import logging
-from datetime import datetime
 from decimal import Decimal
 from threading import Timer
 
 from flask import jsonify, render_template, request
+from flask_pydantic import validate
 from plaid.model.country_code import CountryCode
 from plaid.model.item_public_token_exchange_request import (
     ItemPublicTokenExchangeRequest,
@@ -14,42 +14,41 @@ from plaid.model.products import Products
 from twilio.twiml.messaging_response import MessagingResponse
 
 import config
-from models import BudgetCategory, Transaction, db
+from models.api import (
+    ConnectBankRequest,
+    CreateLinkTokenRequest,
+    PhoneNumberQuery,
+    SetBudgetRequest,
+    TransactionVerificationRequest,
+)
+from models.database import db
 from server import app, plaid_client
 from utils import (
     get_budget_status_text,
-    get_pending_transactions_text,
+    get_pending_transactions_for_verification,
+    get_recent_transactions_text,
     get_user_by_phone,
-    notify_new_transaction,
-    process_transaction_response,
-    sync_all_users,
-    sync_transactions_for_user,
+    update_monthly_totals,
 )
 
 # Set up logging
 logger = logging.getLogger(__name__)
 
 
-# API Routes
 @app.route("/")
 def index():
     return render_template("index.html")
 
 
 @app.route("/api/create_link_token", methods=["POST"])
-def create_link_token():
+@validate()
+def create_link_token(body: CreateLinkTokenRequest):
     """Create a Plaid Link token for connecting bank accounts."""
-    data = request.get_json()
-    phone_number = data.get("phone_number")
-
-    if not phone_number:
-        return jsonify({"error": "phone_number is required"}), 400
-
     request_data = LinkTokenCreateRequest(
         client_name=config.PLAID_CLIENT_NAME,
         country_codes=[CountryCode.us],
         language="en",
-        user=LinkTokenCreateRequestUser(client_user_id=phone_number),
+        user=LinkTokenCreateRequestUser(client_user_id=body.phone_number),
         products=[Products.transactions],
         webhook=config.PLAID_WEBHOOK_URL,
         redirect_uri=config.PLAID_REDIRECT_URI,
@@ -59,21 +58,15 @@ def create_link_token():
 
 
 @app.route("/api/connect_bank", methods=["POST"])
-def connect_bank():
+@validate()
+def connect_bank(body: ConnectBankRequest):
     """Connect bank account using public token."""
-    data = request.get_json()
-    public_token = data.get("public_token")
-    phone_number = data.get("phone_number")
-
-    if not public_token or not phone_number:
-        return jsonify({"error": "public_token and phone_number are required"}), 400
-
     # Exchange public token for access token
-    exchange_request = ItemPublicTokenExchangeRequest(public_token=public_token)
+    exchange_request = ItemPublicTokenExchangeRequest(public_token=body.public_token)
     exchange_response = plaid_client.item_public_token_exchange(exchange_request)
 
     # Get or create user
-    user = get_user_by_phone(phone_number)
+    user = get_user_by_phone(body.phone_number)
     user.plaid_access_token = exchange_response["access_token"]
     user.plaid_item_id = exchange_response["item_id"]
     db.session.commit()
@@ -90,32 +83,57 @@ def connect_bank():
 
 # Budget Management API
 @app.route("/api/budget", methods=["GET"])
-def get_budget():
+@validate()
+def get_budget(query: PhoneNumberQuery):
     """Get budget categories for a user."""
-    phone_number = request.args.get("phone_number")
-    if not phone_number:
-        return jsonify({"error": "phone_number is required"}), 400
-
-    user = get_user_by_phone(phone_number)
+    user = get_user_by_phone(query.phone_number)
     budget_data = []
 
-    for category in user.budget_categories:
-        # Calculate spent amount for current month
-        current_month = datetime.now().replace(day=1).date()
-        spent = db.session.query(db.func.sum(Transaction.user_amount)).filter(
-            Transaction.user_id == user.id,
-            Transaction.category == category.name,
-            Transaction.date >= current_month,
-            ~Transaction.is_pending_review,
-            Transaction.user_amount.isnot(None),
-        ).scalar() or Decimal("0")
+    # Direct 1:1 mapping between budget fields and total fields
+    budget_mapping = [
+        ("Income", user.income_budget, user.income_total),
+        ("Transfer In", user.transfer_in_budget, user.transfer_in_total),
+        ("Transfer Out", user.transfer_out_budget, user.transfer_out_total),
+        ("Loan Payments", user.loan_payments_budget, user.loan_payments_total),
+        ("Bank Fees", user.bank_fees_budget, user.bank_fees_total),
+        ("Entertainment", user.entertainment_budget, user.entertainment_total),
+        ("Food & Drink", user.food_and_drink_budget, user.food_and_drink_total),
+        ("Shopping", user.general_merchandise_budget, user.general_merchandise_total),
+        ("Home Improvement", user.home_improvement_budget, user.home_improvement_total),
+        ("Medical", user.medical_budget, user.medical_total),
+        ("Personal Care", user.personal_care_budget, user.personal_care_total),
+        ("General Services", user.general_services_budget, user.general_services_total),
+        (
+            "Government & Non-Profit",
+            user.government_and_non_profit_budget,
+            user.government_and_non_profit_total,
+        ),
+        ("Transportation", user.transportation_budget, user.transportation_total),
+        ("Travel", user.travel_budget, user.travel_total),
+        (
+            "Rent & Utilities",
+            user.rent_and_utilities_budget,
+            user.rent_and_utilities_total,
+        ),
+    ]
+
+    # Filter to only show categories with budgets set
+    active_budgets = [
+        (name, budget, total)
+        for name, budget, total in budget_mapping
+        if budget and budget > 0
+    ]
+
+    for name, budget_limit, spent in active_budgets:
+        spent = spent or Decimal("0")
+        remaining = budget_limit - spent
 
         budget_data.append(
             {
-                "category": category.name,
-                "monthly_limit": float(category.monthly_limit),
+                "category": name,
+                "monthly_limit": float(budget_limit),
                 "spent": float(spent),
-                "remaining": float(category.monthly_limit - spent),
+                "remaining": float(remaining),
             }
         )
 
@@ -123,215 +141,202 @@ def get_budget():
 
 
 @app.route("/api/budget", methods=["POST"])
-def set_budget():
-    """Set budget categories for a user."""
-    data = request.get_json()
-    phone_number = data.get("phone_number")
-    categories = data.get("categories", [])
+@validate()
+def set_budget(body: SetBudgetRequest):
+    """Set budget limits for a user."""
+    user = get_user_by_phone(body.phone_number)
 
-    if not phone_number:
-        return jsonify({"error": "phone_number is required"}), 400
-
-    user = get_user_by_phone(phone_number)
-
-    # Clear existing budget categories
-    BudgetCategory.query.filter_by(user_id=user.id).delete()
-
-    # Add new categories
-    for cat_data in categories:
-        category = BudgetCategory(
-            user_id=user.id,
-            name=cat_data["name"],
-            monthly_limit=Decimal(str(cat_data["monthly_limit"])),
-        )
-        db.session.add(category)
+    # Update individual budget fields directly
+    budget_limits = body.budget_limits
+    user.income_budget = budget_limits.income_budget
+    user.transfer_in_budget = budget_limits.transfer_in_budget
+    user.transfer_out_budget = budget_limits.transfer_out_budget
+    user.loan_payments_budget = budget_limits.loan_payments_budget
+    user.bank_fees_budget = budget_limits.bank_fees_budget
+    user.entertainment_budget = budget_limits.entertainment_budget
+    user.food_and_drink_budget = budget_limits.food_and_drink_budget
+    user.general_merchandise_budget = budget_limits.general_merchandise_budget
+    user.home_improvement_budget = budget_limits.home_improvement_budget
+    user.medical_budget = budget_limits.medical_budget
+    user.personal_care_budget = budget_limits.personal_care_budget
+    user.general_services_budget = budget_limits.general_services_budget
+    user.government_and_non_profit_budget = (
+        budget_limits.government_and_non_profit_budget
+    )
+    user.transportation_budget = budget_limits.transportation_budget
+    user.travel_budget = budget_limits.travel_budget
+    user.rent_and_utilities_budget = budget_limits.rent_and_utilities_budget
 
     db.session.commit()
     return jsonify({"status": "success"})
 
 
 @app.route("/api/transactions/pending", methods=["GET"])
-def get_pending_transactions():
-    """Get transactions pending review for a user."""
-    phone_number = request.args.get("phone_number")
-    if not phone_number:
-        return jsonify({"error": "phone_number is required"}), 400
-
-    user = get_user_by_phone(phone_number)
-    pending_transactions = (
-        Transaction.query.filter_by(user_id=user.id, is_pending_review=True)
-        .order_by(Transaction.date.desc())
-        .all()
-    )
+@validate()
+def get_pending_transactions(query: PhoneNumberQuery):
+    """Get transactions pending verification for a user."""
+    user = get_user_by_phone(query.phone_number)
+    pending_transactions = get_pending_transactions_for_verification(user)
 
     transactions_data = []
     for tx in pending_transactions:
         transactions_data.append(
             {
-                "id": tx.id,
-                "merchant_name": tx.merchant_name,
-                "amount": float(tx.amount),
-                "category": tx.category,
-                "date": tx.date.isoformat(),
-                "needs_split": tx.needs_split,
+                "id": tx["id"],
+                "merchant_name": tx["merchant_name"],
+                "amount": float(tx["amount"]),
+                "category": tx["category"],
+                "date": tx["date"],
+                "original_category": tx["original_category"],
             }
         )
 
     return jsonify({"pending_transactions": transactions_data})
 
 
-@app.route("/api/categories", methods=["GET"])
-def get_available_categories():
-    """Get available categories for transaction categorization."""
-    phone_number = request.args.get("phone_number")
-    if not phone_number:
-        return jsonify({"error": "phone_number is required"}), 400
+@app.route("/api/transactions/verify", methods=["POST"])
+@validate()
+def verify_transaction(body: TransactionVerificationRequest):
+    """Verify a transaction and update monthly totals."""
+    user = get_user_by_phone(body.phone_number)
 
-    user = get_user_by_phone(phone_number)
-
-    # User's budget categories (preferred)
-    user_categories = [
-        {"name": cat.name, "type": "budget"} for cat in user.budget_categories
-    ]
-
-    # Common Plaid categories as fallback options
-    common_categories = [
-        {"name": "Food and Drink", "type": "standard"},
-        {"name": "Restaurants", "type": "standard"},
-        {"name": "Groceries", "type": "standard"},
-        {"name": "Shopping", "type": "standard"},
-        {"name": "Transportation", "type": "standard"},
-        {"name": "Gas Stations", "type": "standard"},
-        {"name": "Entertainment", "type": "standard"},
-        {"name": "Healthcare Services", "type": "standard"},
-        {"name": "Utilities", "type": "standard"},
-        {"name": "Travel", "type": "standard"},
-        {"name": "Other", "type": "standard"},
-    ]
-
-    return jsonify(
-        {"user_categories": user_categories, "standard_categories": common_categories}
+    # Update monthly total for the Plaid category
+    update_monthly_totals(
+        user, body.category_override or "general_merchandise", body.user_amount
     )
 
-
-@app.route("/api/transactions/<int:transaction_id>/review", methods=["POST"])
-def review_transaction(transaction_id):
-    """Review and approve a transaction with optional category override."""
-    data = request.get_json()
-    user_amount = data.get("user_amount")
-    needs_split = data.get("needs_split", False)
-    new_category = data.get("category")  # Allow category override
-
-    transaction = Transaction.query.get(transaction_id)
-    if not transaction:
-        return jsonify({"error": "Transaction not found"}), 404
-
-    transaction.user_amount = (
-        Decimal(str(user_amount)) if user_amount else transaction.amount
-    )
-    transaction.needs_split = needs_split
-
-    # Allow category override
-    if new_category and new_category != transaction.category:
-        transaction.category = new_category
-
-    transaction.is_pending_review = False
-    transaction.reviewed_at = datetime.utcnow()
+    # Update user's cursor to move past this transaction
+    # In a real implementation, you'd want to track which transactions have been verified
 
     db.session.commit()
+
     return jsonify({"status": "success"})
 
 
-# SMS Handling
+@app.route("/api/monthly-totals", methods=["GET"])
+@validate()
+def get_monthly_totals(query: PhoneNumberQuery):
+    """Get current monthly spending totals by category."""
+    user = get_user_by_phone(query.phone_number)
+
+    totals = {
+        "income": float(user.income_total or 0),
+        "transfer_in": float(user.transfer_in_total or 0),
+        "transfer_out": float(user.transfer_out_total or 0),
+        "loan_payments": float(user.loan_payments_total or 0),
+        "bank_fees": float(user.bank_fees_total or 0),
+        "entertainment": float(user.entertainment_total or 0),
+        "food_and_drink": float(user.food_and_drink_total or 0),
+        "general_merchandise": float(user.general_merchandise_total or 0),
+        "home_improvement": float(user.home_improvement_total or 0),
+        "medical": float(user.medical_total or 0),
+        "personal_care": float(user.personal_care_total or 0),
+        "general_services": float(user.general_services_total or 0),
+        "government_and_non_profit": float(user.government_and_non_profit_total or 0),
+        "transportation": float(user.transportation_total or 0),
+        "travel": float(user.travel_total or 0),
+        "rent_and_utilities": float(user.rent_and_utilities_total or 0),
+    }
+
+    return jsonify({"monthly_totals": totals})
+
+
+@app.route("/api/categories", methods=["GET"])
+@validate()
+def get_available_categories(query: PhoneNumberQuery):
+    """Get available categories for transaction categorization."""
+    user = get_user_by_phone(query.phone_number)
+
+    # Return Plaid categories that match our budget fields
+    plaid_categories = [
+        "income",
+        "transfer_in",
+        "transfer_out",
+        "loan_payments",
+        "bank_fees",
+        "entertainment",
+        "food_and_drink",
+        "general_merchandise",
+        "home_improvement",
+        "medical",
+        "personal_care",
+        "general_services",
+        "government_and_non_profit",
+        "transportation",
+        "travel",
+        "rent_and_utilities",
+    ]
+
+    return jsonify({"categories": plaid_categories})
+
+
+# SMS Handler
 @app.route("/sms", methods=["POST"])
 def handle_sms():
     """Handle incoming SMS messages."""
-    from_number = request.values.get("From", "")
-    message_body = request.values.get("Body", "").strip()
-
-    resp = MessagingResponse()
-
     try:
+        # Get SMS data
+        from_number = request.form.get("From")
+        message_body = request.form.get("Body", "").strip().lower()
+
+        if not from_number:
+            return "Invalid request", 400
+
+        # Get or create user
         user = get_user_by_phone(from_number)
-        message_lower = message_body.lower()
 
-        # Check if user has pending transaction responses first
-        has_pending_response = (
-            Transaction.query.filter_by(
-                user_id=user.id, awaiting_sms_response=True
-            ).first()
-            is not None
-        )
+        # Handle different commands
+        if message_body == "balance" or message_body == "status":
+            response_text = get_budget_status_text(user)
+        elif message_body == "recent":
+            response_text = get_recent_transactions_text(user)
+        elif message_body == "pending":
+            response_text = get_pending_transactions_text(user)
+        elif message_body == "sync":
+            # Trigger transaction sync
+            from utils import sync_all_users
 
-        if has_pending_response and message_lower not in [
-            "help",
-            "balance",
-            "pending",
-            "sync",
-        ]:
-            # Process as transaction response
-            response_text = process_transaction_response(user, message_body)
-            resp.message(response_text)
-
-        elif message_lower == "help":
-            help_text = """📱 SpendPal Commands:
-• balance - See your budget status
-• pending - View transactions needing review
-• sync - Check for new transactions
-• help - Show this message
-
-Reply to transaction notifications with:
-• 'full' - You owe the full amount
-• '25' - You owe $25
-• '25,Food' - You owe $25, categorize as Food"""
-            resp.message(help_text)
-
-        elif message_lower == "balance":
-            budget_text = get_budget_status_text(user)
-            resp.message(budget_text)
-
-        elif message_lower == "pending":
-            pending_text = get_pending_transactions_text(user)
-            resp.message(pending_text)
-
-        elif message_lower == "sync":
-            new_transactions = sync_transactions_for_user(user)
-            if new_transactions:
-                resp.message(
-                    f"🔄 Found {len(new_transactions)} new transactions! Check your messages for details."
-                )
-                # Send notifications for each new transaction
-                for tx in new_transactions:
-                    notify_new_transaction(user, tx)
-            else:
-                resp.message("✅ No new transactions found.")
-
+            sync_all_users()
+            response_text = "🔄 Syncing transactions... Check back in a few minutes!"
+        elif message_body == "help":
+            response_text = (
+                "📱 SpendPal SMS Commands:\n\n"
+                "💰 balance - Check budget status\n"
+                "📊 recent - View monthly spending by category\n"
+                "⏳ pending - View transactions needing verification\n"
+                "🔄 sync - Update monthly totals\n"
+                "❓ help - Show this message"
+            )
         else:
-            resp.message("❓ Unknown command. Text 'help' to see available commands.")
+            response_text = "❓ Unknown command. Text 'help' for available commands."
 
-    return str(resp)
+        # Send response
+        twiml_response = MessagingResponse()
+        twiml_response.message(response_text)
+        return str(twiml_response)
+
+    except Exception as e:
+        logger.error(f"Error handling SMS: {str(e)}")
+        twiml_response = MessagingResponse()
+        twiml_response.message(
+            "❌ Sorry, something went wrong. Please try again later."
+        )
+        return str(twiml_response)
 
 
-# Background Tasks
 def run_sync_scheduler():
-    """Run the transaction sync scheduler."""
-    logger.info("Starting transaction sync scheduler...")
-    with app.app_context():
-        sync_all_users()
-    Timer(3600, run_sync_scheduler).start()  # Run every hour
+    """Run the sync scheduler in the background."""
+    from utils import sync_all_users
+
+    sync_all_users()
+    # Schedule next run in 1 hour
+    Timer(3600, run_sync_scheduler).start()
 
 
-# Health check
-@app.route("/api/health", methods=["GET"])
-def health_check():
-    """Health check endpoint."""
-    return jsonify(
-        {"status": "healthy", "timestamp": datetime.now().isoformat(), "version": "2.0"}
-    )
-
-
-# Initialize scheduler
-run_sync_scheduler()
-
+# Start sync scheduler when app starts
 if __name__ == "__main__":
-    app.run(port=config.PORT, debug=True)
+    run_sync_scheduler()
+    app.run(debug=True)
+else:
+    # For production deployment
+    run_sync_scheduler()

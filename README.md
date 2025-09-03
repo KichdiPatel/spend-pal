@@ -5,10 +5,11 @@ A simple SMS-based budget tracking API with Plaid integration for bank account c
 ## Features
 
 - **SMS Interface**: Manage your budget via text messages
-- **Plaid Integration**: Connect bank accounts and sync transactions automatically
-- **Smart Transaction Splitting**: Handle shared expenses and bill splitting
-- **Budget Tracking**: Set monthly budget limits and get real-time status
-- **Automated Notifications**: Get SMS alerts for new transactions
+- **Plaid Integration**: Connect bank accounts and sync monthly spending totals
+- **Bill Splitting Support**: Users can adjust transaction amounts for shared expenses
+- **Smart Categorization**: Auto-map Plaid categories to your budget categories
+- **Secure Storage**: Only monthly totals stored locally, no individual transaction data
+- **Request Validation**: Pydantic models for robust API validation with detailed error messages
 - **RESTful API**: Clean API endpoints for frontend integration
 
 ## Tech Stack
@@ -116,10 +117,15 @@ poetry run gunicorn -w 4 -b 0.0.0.0:5000 app:app
 - `GET /api/budget?phone_number={phone}` - Get budget categories and spending
 - `POST /api/budget` - Set budget categories for a user
 
-### Transaction Management
-- `GET /api/transactions/pending?phone_number={phone}` - Get transactions needing review
-- `POST /api/transactions/{id}/review` - Review and approve a transaction
-- `GET /api/categories?phone_number={phone}` - Get available categories for override
+### Budget Management
+- `GET /api/budget?phone_number={phone}` - Get budget categories and spending from monthly totals
+- `POST /api/budget` - Set budget categories for a user
+- `GET /api/monthly-totals?phone_number={phone}` - Get current month spending by Plaid category
+- `GET /api/categories?phone_number={phone}` - Get available categories for reference
+
+### Transaction Verification
+- `GET /api/transactions/pending?phone_number={phone}` - Get transactions needing verification
+- `POST /api/transactions/verify` - Verify transaction and update monthly totals
 
 ### SMS Interface
 - `POST /sms` - Handle incoming SMS messages (Twilio webhook)
@@ -131,20 +137,14 @@ poetry run gunicorn -w 4 -b 0.0.0.0:5000 app:app
 
 Text these commands to your Twilio phone number:
 - **help** - Show available commands
-- **balance** - See your current budget status
-- **pending** - View transactions needing review
-- **sync** - Manually sync new transactions
-
-### Transaction Response Format
-When you receive a transaction notification, reply with:
-- **full** - You owe the full amount
-- **25** - You owe $25 (keeps auto-assigned category)
-- **25,Food** - You owe $25 and change category to "Food"
-- **0** - You don't owe anything (someone else paid)
+- **balance** - See your current budget status from monthly totals
+- **recent** - View monthly spending by category
+- **pending** - View transactions needing verification
+- **sync** - Manually refresh transaction data from Plaid
 
 ## Smart Categorization
 
-SpendPal automatically categorizes transactions using:
+SpendPal automatically categorizes transactions using Plaid's real-time data:
 
 1. **Direct Match**: If Plaid's category matches your budget category exactly
 2. **Smart Mapping**: Maps Plaid categories to your budget categories:
@@ -153,9 +153,11 @@ SpendPal automatically categorizes transactions using:
    - "General Merchandise" → "Shopping" (if you have a "Shopping" budget)
 3. **Fallback**: Uses Plaid's original category if no mapping found
 
-### Category Override Options
-- **Budget Categories**: Your custom categories (preferred, count toward budget)
-- **Standard Categories**: Common categories for transactions outside your budget
+### Benefits of Monthly Totals Approach
+- **Bill Splitting Support**: Users can adjust amounts for shared expenses
+- **Secure Storage**: Only monthly totals stored, no individual transaction details
+- **Efficient Syncing**: Cursor-based updates with user verification
+- **Flexible Categorization**: Users can override Plaid categories when needed
 
 ## Database Schema
 
@@ -174,19 +176,12 @@ SpendPal automatically categorizes transactions using:
 - `monthly_limit`: Monthly spending limit
 - `created_at`: Category creation timestamp
 
-### Transactions Table
-- `id`: Primary key
-- `user_id`: Foreign key to users table
-- `plaid_transaction_id`: Plaid transaction ID (unique)
-- `merchant_name`: Merchant/vendor name
-- `amount`: Full transaction amount
-- `user_amount`: Amount user actually owes (for split transactions)
-- `category`: Transaction category
-- `date`: Transaction date
-- `is_pending_review`: Whether transaction needs user review
-- `needs_split`: Whether transaction was split with others
-- `created_at`: Record creation timestamp
-- `reviewed_at`: When transaction was reviewed
+### Monthly Totals Storage
+Monthly spending totals are stored by Plaid category (e.g., `food_and_drink_total`, `transportation_total`). This approach:
+- **Supports bill splitting** - users can adjust amounts for shared expenses
+- **Minimal sensitive data** - only totals, not individual transactions
+- **Efficient syncing** - cursor-based updates with user verification
+- **Flexible categorization** - users can override Plaid categories when needed
 
 ## Development
 

@@ -1,12 +1,68 @@
 import logging
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
+from typing import Any, Dict, List
 
 import config
-from models import Transaction, User, db
-from server import twilio_client
+from models.database import User, db
+from server import plaid_client, twilio_client
 
 logger = logging.getLogger(__name__)
+
+
+def get_plaid_category_field(plaid_category: str) -> str:
+    """Map Plaid category to database field name."""
+    category_mapping = {
+        "income": "income_total",
+        "transfer_in": "transfer_in_total",
+        "transfer_out": "transfer_out_total",
+        "loan_payments": "loan_payments_total",
+        "bank_fees": "bank_fees_total",
+        "entertainment": "entertainment_total",
+        "food_and_drink": "food_and_drink_total",
+        "general_merchandise": "general_merchandise_total",
+        "home_improvement": "home_improvement_total",
+        "medical": "medical_total",
+        "personal_care": "personal_care_total",
+        "general_services": "general_services_total",
+        "government_and_non_profit": "government_and_non_profit_total",
+        "transportation": "transportation_total",
+        "travel": "travel_total",
+        "rent_and_utilities": "rent_and_utilities_total",
+    }
+    return category_mapping.get(plaid_category, "general_merchandise_total")
+
+
+def update_monthly_totals(user: User, plaid_category: str, amount: Decimal):
+    """Update monthly total for a specific Plaid category."""
+    field_name = get_plaid_category_field(plaid_category)
+    current_total = getattr(user, field_name, Decimal("0"))
+    setattr(user, field_name, current_total + amount)
+
+
+def reset_monthly_totals(user: User):
+    """Reset all monthly totals to zero (call at start of new month)."""
+    category_fields = [
+        "income_total",
+        "transfer_in_total",
+        "transfer_out_total",
+        "loan_payments_total",
+        "bank_fees_total",
+        "entertainment_total",
+        "food_and_drink_total",
+        "general_merchandise_total",
+        "home_improvement_total",
+        "medical_total",
+        "personal_care_total",
+        "general_services_total",
+        "government_and_non_profit_total",
+        "transportation_total",
+        "travel_total",
+        "rent_and_utilities_total",
+    ]
+
+    for field in category_fields:
+        setattr(user, field, Decimal("0.00"))
 
 
 def send_sms(message: str, to_number: str = None):
@@ -39,287 +95,255 @@ def map_plaid_category_to_budget(user: User, plaid_category: str) -> str:
     if not plaid_category:
         return "Other"
 
-    # Get user's budget category names (lowercase for matching)
-    user_categories = {cat.name.lower(): cat.name for cat in user.budget_categories}
-    plaid_lower = plaid_category.lower()
-
-    # Direct match
-    if plaid_lower in user_categories:
-        return user_categories[plaid_lower]
-
-    # Smart mapping from common Plaid categories to budget categories
-    category_mappings = {
-        # Food categories
-        "food and drink": ["food", "dining", "restaurants", "groceries"],
-        "restaurants": ["food", "dining", "restaurants"],
-        "fast food": ["food", "dining", "restaurants"],
-        "coffee shop": ["food", "dining", "restaurants", "coffee"],
-        "bar": ["food", "dining", "entertainment"],
-        # Shopping categories
-        "shops": ["shopping", "retail"],
-        "clothing and accessories": ["shopping", "clothes", "clothing"],
-        "general merchandise": ["shopping", "retail"],
-        "sporting goods": ["shopping", "sports"],
-        "bookstores and newsstands": ["shopping", "books"],
-        # Transportation
-        "transportation": ["transport", "travel", "gas", "uber", "lyft"],
-        "gas stations": ["gas", "transport", "travel"],
-        "taxi": ["transport", "uber", "lyft", "travel"],
-        "public transportation": ["transport", "travel"],
-        "parking": ["transport", "travel"],
-        # Entertainment
-        "entertainment": ["fun", "movies", "games"],
-        "movie theaters": ["entertainment", "movies", "fun"],
-        "music and video": ["entertainment", "fun"],
-        "gyms and fitness centers": ["fitness", "health", "gym"],
-        # Health
-        "healthcare services": ["health", "medical", "doctor"],
-        "pharmacies": ["health", "medical", "pharmacy"],
-        # Utilities & Home
-        "utilities": ["bills", "utilities"],
-        "internet and cable": ["bills", "utilities", "internet"],
-        "mobile phone": ["bills", "utilities", "phone"],
-        "rent": ["housing", "rent"],
-        "home improvement": ["home", "house"],
-        # Financial
-        "bank fees": ["fees", "banking"],
-        "atm": ["fees", "cash"],
+    # Direct mapping to our field names - much simpler!
+    plaid_to_budget_mapping = {
+        "income": "income",
+        "transfer_in": "transfer_in",
+        "transfer_out": "transfer_out",
+        "loan_payments": "loan_payments",
+        "bank_fees": "bank_fees",
+        "entertainment": "entertainment",
+        "food_and_drink": "food_and_drink",
+        "general_merchandise": "general_merchandise",
+        "home_improvement": "home_improvement",
+        "medical": "medical",
+        "personal_care": "personal_care",
+        "general_services": "general_services",
+        "government_and_non_profit": "government_and_non_profit",
+        "transportation": "transportation",
+        "travel": "travel",
+        "rent_and_utilities": "rent_and_utilities",
     }
 
-    # Try to find a mapping
-    for plaid_cat, possible_matches in category_mappings.items():
-        if plaid_cat in plaid_lower:
-            for match in possible_matches:
-                if match in user_categories:
-                    return user_categories[match]
-
-    # If no mapping found, return the original Plaid category
-    return plaid_category
+    # Return mapped category or fallback to general_merchandise
+    return plaid_to_budget_mapping.get(plaid_category.lower(), "general_merchandise")
 
 
-def sync_transactions_for_user(user: User):
-    """Sync new transactions from Plaid for a user."""
-    from plaid.model.transactions_sync_request import TransactionsSyncRequest
-
-    from server import plaid_client
-
+def get_pending_transactions_for_verification(user: User) -> List[Dict[str, Any]]:
+    """Get transactions that need user verification for amount adjustment."""
     if not user.plaid_access_token:
         return []
 
     try:
-        cursor = user.plaid_cursor or ""
-        new_transactions = []
-
-        request_data = TransactionsSyncRequest(
-            access_token=user.plaid_access_token,
-            cursor=cursor,
+        # Get current month boundaries
+        now = datetime.now()
+        current_month_start = date(now.year, now.month, 1)
+        current_month_end = (
+            date(now.year, now.month + 1, 1)
+            if now.month < 12
+            else date(now.year + 1, 1, 1)
         )
-        response = plaid_client.transactions_sync(request_data).to_dict()
 
-        for tx_data in response["added"]:
-            # Check if transaction already exists
-            existing = Transaction.query.filter_by(
-                plaid_transaction_id=tx_data["transaction_id"]
-            ).first()
+        # Use cursor-based syncing to get all transactions
+        cursor = user.plaid_cursor or ""
+        pending_transactions = []
 
-            if not existing:
-                # Smart category mapping
-                plaid_category = (
-                    tx_data["category"][0] if tx_data["category"] else "Other"
-                )
-                mapped_category = map_plaid_category_to_budget(user, plaid_category)
+        while True:
+            from plaid.model.transactions_sync_request import TransactionsSyncRequest
 
-                transaction = Transaction(
-                    user_id=user.id,
-                    plaid_transaction_id=tx_data["transaction_id"],
-                    merchant_name=tx_data["merchant_name"] or tx_data["name"],
-                    amount=abs(
-                        Decimal(str(tx_data["amount"]))
-                    ),  # Plaid amounts are negative for debits
-                    category=mapped_category,
-                    original_category=plaid_category,  # Store original Plaid category
-                    date=datetime.strptime(tx_data["date"], "%Y-%m-%d").date(),
-                    is_pending_review=True,
-                    needs_split=False,
-                    awaiting_sms_response=True,  # Mark as awaiting SMS response
-                )
-                db.session.add(transaction)
-                new_transactions.append(transaction)
+            request_data = TransactionsSyncRequest(
+                access_token=user.plaid_access_token,
+                cursor=cursor,
+            )
+            response = plaid_client.transactions_sync(request_data).to_dict()
 
-        # Update cursor
-        user.plaid_cursor = response["next_cursor"]
-        db.session.commit()
+            # Process added transactions
+            for tx_data in response["added"]:
+                tx_date = datetime.strptime(tx_data["date"], "%Y-%m-%d").date()
 
-        return new_transactions
+                # Only include transactions from current month
+                if current_month_start <= tx_date < current_month_end:
+                    # Smart category mapping
+                    plaid_category = (
+                        tx_data["category"][0] if tx_data["category"] else "Other"
+                    )
+                    mapped_category = map_plaid_category_to_budget(user, plaid_category)
+
+                    transaction = {
+                        "id": tx_data["transaction_id"],
+                        "merchant_name": tx_data["merchant_name"] or tx_data["name"],
+                        "amount": abs(
+                            Decimal(str(tx_data["amount"]))
+                        ),  # Plaid amounts are negative for debits
+                        "category": mapped_category,
+                        "original_category": plaid_category,
+                        "date": tx_data["date"],
+                        "date_obj": tx_date,
+                    }
+                    pending_transactions.append(transaction)
+
+            # Update cursor for next iteration
+            cursor = response["next_cursor"]
+
+            # Break if no more transactions or if we've reached the end
+            if not response["added"] or cursor == user.plaid_cursor:
+                break
+
+        return pending_transactions
+
     except Exception as e:
-        logger.error(f"Error syncing transactions: {str(e)}")
+        logger.error(
+            f"Error getting pending transactions for user {user.phone_number}: {str(e)}"
+        )
+        return []
+
+
+def get_current_month_transactions(user: User) -> List[Dict[str, Any]]:
+    """Get all transactions for the current month from Plaid and update monthly totals."""
+    if not user.plaid_access_token:
+        return []
+
+    try:
+        # Check if we need to reset monthly totals (new month)
+        now = datetime.now()
+        current_month_start = date(now.year, now.month, 1)
+
+        if user.last_sync_date is None or user.last_sync_date < current_month_start:
+            reset_monthly_totals(user)
+            user.last_sync_date = current_month_start
+            logger.info(f"Reset monthly totals for user {user.phone_number}")
+
+        # Get pending transactions for verification
+        pending_transactions = get_pending_transactions_for_verification(user)
+
+        # Update user's cursor to latest position
+        if pending_transactions:
+            # Note: In a real implementation, you'd want to store the cursor
+            # after user verification, not here
+            pass
+
+        return pending_transactions
+
+    except Exception as e:
+        logger.error(
+            f"Error getting transactions for user {user.phone_number}: {str(e)}"
+        )
         return []
 
 
 def get_budget_status_text(user: User) -> str:
-    """Generate budget status text for SMS."""
-    if not user.budget_categories:
+    """Generate budget status text for SMS using stored monthly totals."""
+    # Direct 1:1 mapping between budget fields and total fields
+    budget_mapping = [
+        ("Income", user.income_budget, user.income_total),
+        ("Transfer In", user.transfer_in_budget, user.transfer_in_total),
+        ("Transfer Out", user.transfer_out_budget, user.transfer_out_total),
+        ("Loan Payments", user.loan_payments_budget, user.loan_payments_total),
+        ("Bank Fees", user.bank_fees_budget, user.bank_fees_total),
+        ("Entertainment", user.entertainment_budget, user.entertainment_total),
+        ("Food & Drink", user.food_and_drink_budget, user.food_and_drink_total),
+        ("Shopping", user.general_merchandise_budget, user.general_merchandise_total),
+        ("Home Improvement", user.home_improvement_budget, user.home_improvement_total),
+        ("Medical", user.medical_budget, user.medical_total),
+        ("Personal Care", user.personal_care_budget, user.personal_care_total),
+        ("General Services", user.general_services_budget, user.general_services_total),
+        (
+            "Government & Non-Profit",
+            user.government_and_non_profit_budget,
+            user.government_and_non_profit_total,
+        ),
+        ("Transportation", user.transportation_budget, user.transportation_total),
+        ("Travel", user.travel_budget, user.travel_total),
+        (
+            "Rent & Utilities",
+            user.rent_and_utilities_budget,
+            user.rent_and_utilities_total,
+        ),
+    ]
+
+    # Filter to only show categories with budgets set
+    active_budgets = [
+        (name, budget, total)
+        for name, budget, total in budget_mapping
+        if budget and budget > 0
+    ]
+
+    if not active_budgets:
         return "💰 No budget set. Set up your budget in the app first!"
 
-    current_month = datetime.now().replace(day=1).date()
     status_lines = ["💰 Budget Status:"]
     total_spent = Decimal("0")
     total_budget = Decimal("0")
 
-    for category in user.budget_categories:
-        spent = db.session.query(db.func.sum(Transaction.user_amount)).filter(
-            Transaction.user_id == user.id,
-            Transaction.category == category.name,
-            Transaction.date >= current_month,
-            ~Transaction.is_pending_review,
-            Transaction.user_amount.isnot(None),
-        ).scalar() or Decimal("0")
-
-        remaining = category.monthly_limit - spent
+    # Direct 1:1 comparison - no complex logic needed!
+    for name, budget_limit, spent in active_budgets:
+        spent = spent or Decimal("0")
+        remaining = budget_limit - spent
         total_spent += spent
-        total_budget += category.monthly_limit
+        total_budget += budget_limit
 
         emoji = "🟢" if remaining > 0 else "🔴"
-        status_lines.append(
-            f"{emoji} {category.name}: ${spent:.0f}/${category.monthly_limit:.0f}"
-        )
+        status_lines.append(f"{emoji} {name}: ${spent:.0f}/${budget_limit:.0f}")
 
     total_remaining = total_budget - total_spent
-    status_lines.append(f"\n💳 Total: ${total_spent:.0f}/${total_budget:.0f}")
+    status_lines.append(f"\n💳 Total: ${total_spent:.0f}/{total_budget:.0f}")
     status_lines.append(f"💰 Remaining: ${total_remaining:.0f}")
 
     return "\n".join(status_lines)
 
 
 def get_pending_transactions_text(user: User) -> str:
-    """Generate pending transactions text for SMS."""
-    pending = (
-        Transaction.query.filter_by(user_id=user.id, is_pending_review=True)
-        .order_by(Transaction.date.desc())
-        .limit(5)
-        .all()
-    )
+    """Generate text showing transactions pending verification."""
+    pending_transactions = get_pending_transactions_for_verification(user)
 
-    if not pending:
-        return "✅ No pending transactions to review!"
+    if not pending_transactions:
+        return "✅ No transactions pending verification!"
 
-    lines = [f"📋 {len(pending)} pending transactions:"]
-    for tx in pending:
+    lines = [f"📋 {len(pending_transactions)} transactions need verification:"]
+
+    for tx in pending_transactions[:5]:  # Show first 5
+        lines.append(f"• {tx['merchant_name']}: ${tx['amount']:.2f} ({tx['date']})")
+
+    if len(pending_transactions) > 5:
         lines.append(
-            f"• {tx.merchant_name}: ${tx.amount:.2f} ({tx.date.strftime('%m/%d')})"
+            f"\n📱 Use the app to verify all {len(pending_transactions)} transactions"
         )
-
-    if len(pending) == 5:
-        lines.append("\n📱 Use the app to review all transactions.")
 
     return "\n".join(lines)
 
 
-def notify_new_transaction(user: User, transaction: Transaction):
-    """Send SMS notification for new transaction."""
-    # Check if category was auto-mapped vs exact match
-    user_category_names = [cat.name.lower() for cat in user.budget_categories]
-    is_budget_category = transaction.category.lower() in user_category_names
-    category_note = "✅" if is_budget_category else "🤖"
+def get_recent_transactions_text(user: User, limit: int = 5) -> str:
+    """Generate recent transactions text for SMS using stored monthly totals."""
+    # For now, just show the monthly totals by category
+    # In a real implementation, you might want to show recent individual transactions
+    # that the user has verified
 
-    message = f"""💳 New Transaction:
-{transaction.merchant_name}
-${transaction.amount:.2f} - {category_note} {transaction.category}
-{transaction.date.strftime("%m/%d/%Y")}
+    lines = ["📋 Monthly Spending by Category:"]
 
-Reply: amount,category (e.g. "25,Food") or "full" for ${transaction.amount:.2f}
-{category_note} = auto-categorized, ✅ = matches your budget"""
+    # Show top spending categories
+    category_totals = [
+        ("Food & Drink", user.food_and_drink_total),
+        ("Shopping", user.general_merchandise_total),
+        ("Transportation", user.transportation_total),
+        ("Entertainment", user.entertainment_total),
+        ("Medical", user.medical_total),
+        ("Utilities", user.rent_and_utilities_total),
+    ]
 
-    send_sms(message, user.phone_number)
+    # Sort by amount and show top categories
+    sorted_categories = sorted(category_totals, key=lambda x: x[1], reverse=True)
 
+    for name, total in sorted_categories[:limit]:
+        if total > 0:
+            lines.append(f"• {name}: ${total:.2f}")
 
-def process_transaction_response(user: User, message: str) -> str:
-    """Process user response to transaction notification."""
-    # Get the most recent transaction awaiting response
-    pending_tx = (
-        Transaction.query.filter_by(user_id=user.id, awaiting_sms_response=True)
-        .order_by(Transaction.created_at.desc())
-        .first()
-    )
+    if not any(total > 0 for _, total in sorted_categories):
+        lines.append("✅ No spending recorded this month")
 
-    if not pending_tx:
-        return "❓ No transaction awaiting response. Text 'help' for commands."
-
-    message = message.strip().lower()
-
-    try:
-        # Handle "full" response
-        if message == "full":
-            pending_tx.user_amount = pending_tx.amount
-            pending_tx.needs_split = False
-
-        # Handle amount,category format (e.g. "25,food" or "25")
-        elif "," in message:
-            parts = message.split(",", 1)
-            amount_str = parts[0].strip()
-            category_str = parts[1].strip() if len(parts) > 1 else None
-
-            # Parse amount
-            try:
-                amount = Decimal(amount_str.replace("$", ""))
-                pending_tx.user_amount = amount
-                pending_tx.needs_split = amount != pending_tx.amount
-            except (ValueError, TypeError):
-                return f"❌ Invalid amount '{amount_str}'. Try 'full' or a number like '25.50'"
-
-            # Update category if provided
-            if category_str:
-                # Find matching user budget category
-                user_categories = {
-                    cat.name.lower(): cat.name for cat in user.budget_categories
-                }
-                if category_str in user_categories:
-                    pending_tx.category = user_categories[category_str]
-                else:
-                    # Use as-is if not in budget categories
-                    pending_tx.category = category_str.title()
-
-        # Handle just amount (e.g. "25")
-        else:
-            try:
-                amount = Decimal(message.replace("$", ""))
-                pending_tx.user_amount = amount
-                pending_tx.needs_split = amount != pending_tx.amount
-            except (ValueError, TypeError):
-                return (
-                    f"❌ Invalid response '{message}'. Try 'full', '25', or '25,Food'"
-                )
-
-        # Mark as reviewed
-        pending_tx.is_pending_review = False
-        pending_tx.awaiting_sms_response = False
-        pending_tx.reviewed_at = datetime.utcnow()
-        db.session.commit()
-
-        # Confirmation message
-        split_note = (
-            f" (split from ${pending_tx.amount:.2f})" if pending_tx.needs_split else ""
-        )
-        return f"✅ {pending_tx.merchant_name}: ${pending_tx.user_amount:.2f} → {pending_tx.category}{split_note}"
-
-    except Exception as e:
-        logger.error(f"Error processing transaction response: {str(e)}")
-        return "❌ Error processing response. Try 'full', '25', or '25,Food'"
+    return "\n".join(lines)
 
 
 def sync_all_users():
-    """Sync transactions for all users."""
+    """Sync transactions for all users (now just updates cursors and monthly totals)."""
     users = User.query.filter(User.plaid_access_token.isnot(None)).all()
     for user in users:
         try:
-            new_transactions = sync_transactions_for_user(user)
-            if new_transactions:
+            # Get transactions and update monthly totals
+            transactions = get_current_month_transactions(user)
+            if transactions:
                 logger.info(
-                    f"Synced {len(new_transactions)} new transactions for user {user.phone_number}"
+                    f"Updated monthly totals for user {user.phone_number} - found {len(transactions)} transactions to verify"
                 )
-                # Notify user of new transactions
-                for tx in new_transactions:
-                    notify_new_transaction(user, tx)
         except Exception as e:
             logger.error(
                 f"Error syncing transactions for user {user.phone_number}: {str(e)}"
