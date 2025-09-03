@@ -2,7 +2,7 @@ import logging
 from decimal import Decimal
 from threading import Timer
 
-from flask import jsonify, render_template, request
+from flask import render_template, request
 from flask_pydantic import validate
 from plaid.model.country_code import CountryCode
 from plaid.model.item_public_token_exchange_request import (
@@ -17,6 +17,7 @@ import config
 from models.api import (
     ConnectBankRequest,
     CreateLinkTokenRequest,
+    CreateLinkTokenResponse,
     PhoneNumberQuery,
     SetBudgetRequest,
     TransactionVerificationRequest,
@@ -28,10 +29,11 @@ from utils import (
     get_pending_transactions_for_verification,
     get_recent_transactions_text,
     get_user_by_phone,
+    send_sms,
     update_monthly_totals,
 )
 
-# Set up logging
+# TODO: fix logging
 logger = logging.getLogger(__name__)
 
 
@@ -43,42 +45,49 @@ def index():
 @app.route("/api/create_link_token", methods=["POST"])
 @validate()
 def create_link_token(body: CreateLinkTokenRequest):
-    """Create a Plaid Link token for connecting bank accounts."""
-    request_data = LinkTokenCreateRequest(
-        client_name=config.PLAID_CLIENT_NAME,
-        country_codes=[CountryCode.us],
-        language="en",
-        user=LinkTokenCreateRequestUser(client_user_id=body.phone_number),
-        products=[Products.transactions],
-        webhook=config.PLAID_WEBHOOK_URL,
-        redirect_uri=config.PLAID_REDIRECT_URI,
+    """Create a Plaid Link token for connecting bank accounts.
+
+    Args:
+        body: Contains phone number of the user.
+
+    Returns:
+        Plaid link token.
+    """
+    response = plaid_client.link_token_create(
+        LinkTokenCreateRequest(
+            client_name=config.PLAID_CLIENT_NAME,
+            country_codes=[CountryCode.us],
+            language="en",
+            user=LinkTokenCreateRequestUser(client_user_id=body.phone_number),
+            products=[Products.transactions],
+            webhook=config.PLAID_WEBHOOK_URL,
+            redirect_uri=config.PLAID_REDIRECT_URI,
+        )
     )
-    response = plaid_client.link_token_create(request_data)
-    return jsonify(response.to_dict())
+
+    return CreateLinkTokenResponse(link_token=response["link_token"])
 
 
 @app.route("/api/connect_bank", methods=["POST"])
 @validate()
 def connect_bank(body: ConnectBankRequest):
-    """Connect bank account using public token."""
-    # Exchange public token for access token
+    """Connect bank account using public token.
+
+    Args:
+        body: Contains phone number of the user and public token.
+    """
     exchange_request = ItemPublicTokenExchangeRequest(public_token=body.public_token)
     exchange_response = plaid_client.item_public_token_exchange(exchange_request)
 
-    # Get or create user
     user = get_user_by_phone(body.phone_number)
     user.plaid_access_token = exchange_response["access_token"]
     user.plaid_item_id = exchange_response["item_id"]
     db.session.commit()
 
-    # Send welcome SMS
-    from utils import send_sms
-
     send_sms(
-        "🎉 Bank account connected! Text 'balance' to see your budget status or 'help' for commands."
+        "🎉 Bank account connected! Text 'balance' to see your budget status or 'help' for commands.",
+        body.phone_number,
     )
-
-    return jsonify({"status": "success"})
 
 
 # Budget Management API
@@ -137,7 +146,7 @@ def get_budget(query: PhoneNumberQuery):
             }
         )
 
-    return jsonify({"budget": budget_data})
+    return {"budget": budget_data}
 
 
 @app.route("/api/budget", methods=["POST"])
@@ -168,7 +177,6 @@ def set_budget(body: SetBudgetRequest):
     user.rent_and_utilities_budget = budget_limits.rent_and_utilities_budget
 
     db.session.commit()
-    return jsonify({"status": "success"})
 
 
 @app.route("/api/transactions/pending", methods=["GET"])
@@ -191,7 +199,7 @@ def get_pending_transactions(query: PhoneNumberQuery):
             }
         )
 
-    return jsonify({"pending_transactions": transactions_data})
+    return {"pending_transactions": transactions_data}
 
 
 @app.route("/api/transactions/verify", methods=["POST"])
@@ -209,8 +217,6 @@ def verify_transaction(body: TransactionVerificationRequest):
     # In a real implementation, you'd want to track which transactions have been verified
 
     db.session.commit()
-
-    return jsonify({"status": "success"})
 
 
 @app.route("/api/monthly-totals", methods=["GET"])
@@ -238,7 +244,7 @@ def get_monthly_totals(query: PhoneNumberQuery):
         "rent_and_utilities": float(user.rent_and_utilities_total or 0),
     }
 
-    return jsonify({"monthly_totals": totals})
+    return {"monthly_totals": totals}
 
 
 @app.route("/api/categories", methods=["GET"])
@@ -267,7 +273,7 @@ def get_available_categories(query: PhoneNumberQuery):
         "rent_and_utilities",
     ]
 
-    return jsonify({"categories": plaid_categories})
+    return {"categories": plaid_categories}
 
 
 # SMS Handler
@@ -331,6 +337,9 @@ def run_sync_scheduler():
     sync_all_users()
     # Schedule next run in 1 hour
     Timer(3600, run_sync_scheduler).start()
+
+
+# TODO: create webhook endpoint for plaid to send post requests
 
 
 # Start sync scheduler when app starts

@@ -4,12 +4,27 @@ from typing import Optional
 from pydantic import BaseModel, Field, validator
 
 
-# Request Models
-class PhoneNumberQuery(BaseModel):
-    phone_number: str = Field(..., min_length=10, description="User's phone number")
-
-
 class CreateLinkTokenRequest(BaseModel):
+    """Create Link Token Request.
+
+    Args:
+        phone_number: User's phone number
+    """
+
+    phone_number: str
+
+
+class CreateLinkTokenResponse(BaseModel):
+    """Create Link Token Response.
+
+    Args:
+        link_token: Plaid link token
+    """
+
+    link_token: str
+
+
+class PhoneNumberQuery(BaseModel):
     phone_number: str = Field(..., min_length=10, description="User's phone number")
 
 

@@ -5,6 +5,7 @@ from flask_sqlalchemy import SQLAlchemy
 db = SQLAlchemy()
 
 
+# TODO: add a budget table, and monthly totals table
 class User(db.Model):
     """User model with Plaid integration and monthly budget tracking."""
 
@@ -18,7 +19,7 @@ class User(db.Model):
     last_sync_date = db.Column(db.Date, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    # Current Month spending totals by Plaid category
+    # Current month spending totals by Plaid category
     income_total = db.Column(db.Numeric(10, 2))  # 10 total digits, 2 decimal places
     transfer_in_total = db.Column(db.Numeric(10, 2))
     transfer_out_total = db.Column(db.Numeric(10, 2))
@@ -36,7 +37,7 @@ class User(db.Model):
     travel_total = db.Column(db.Numeric(10, 2))
     rent_and_utilities_total = db.Column(db.Numeric(10, 2))
 
-    # Monthly budget limits by Plaid category (exact 1:1 match)
+    # Monthly budget limits
     income_budget = db.Column(db.Numeric(10, 2))
     transfer_in_budget = db.Column(db.Numeric(10, 2))
     transfer_out_budget = db.Column(db.Numeric(10, 2))
@@ -53,6 +54,3 @@ class User(db.Model):
     transportation_budget = db.Column(db.Numeric(10, 2))
     travel_budget = db.Column(db.Numeric(10, 2))
     rent_and_utilities_budget = db.Column(db.Numeric(10, 2))
-
-    def __repr__(self):
-        return f"<User {self.phone_number}>"

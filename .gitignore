@@ -1,5 +1,6 @@
 .env
 .venv/
+
 __pycache__/
 *.pyc
 *.pyo
@@ -11,7 +12,6 @@ dist/
 eggs/
 *.egg-info/
 
-# macOS system files
 .DS_Store
 .DS_Store?
 ._*
