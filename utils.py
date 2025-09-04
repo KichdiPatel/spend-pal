@@ -10,59 +10,38 @@ from server import plaid_client, twilio_client
 logger = logging.getLogger(__name__)
 
 
-def get_plaid_category_field(plaid_category: str) -> str:
-    """Map Plaid category to database field name."""
-    category_mapping = {
-        "income": "income_total",
-        "transfer_in": "transfer_in_total",
-        "transfer_out": "transfer_out_total",
-        "loan_payments": "loan_payments_total",
-        "bank_fees": "bank_fees_total",
-        "entertainment": "entertainment_total",
-        "food_and_drink": "food_and_drink_total",
-        "general_merchandise": "general_merchandise_total",
-        "home_improvement": "home_improvement_total",
-        "medical": "medical_total",
-        "personal_care": "personal_care_total",
-        "general_services": "general_services_total",
-        "government_and_non_profit": "government_and_non_profit_total",
-        "transportation": "transportation_total",
-        "travel": "travel_total",
-        "rent_and_utilities": "rent_and_utilities_total",
-    }
-    return category_mapping.get(plaid_category, "general_merchandise_total")
-
-
 def update_monthly_totals(user: User, plaid_category: str, amount: Decimal):
     """Update monthly total for a specific Plaid category."""
-    field_name = get_plaid_category_field(plaid_category)
-    current_total = getattr(user, field_name, Decimal("0"))
-    setattr(user, field_name, current_total + amount)
+    # Field names now match Plaid categories exactly
+    if hasattr(user.monthly_spending, plaid_category):
+        current_total = getattr(user.monthly_spending, plaid_category, Decimal("0"))
+        setattr(user.monthly_spending, plaid_category, current_total + amount)
 
 
 def reset_monthly_totals(user: User):
     """Reset all monthly totals to zero (call at start of new month)."""
+    # All Plaid category fields (no more _total suffix)
     category_fields = [
-        "income_total",
-        "transfer_in_total",
-        "transfer_out_total",
-        "loan_payments_total",
-        "bank_fees_total",
-        "entertainment_total",
-        "food_and_drink_total",
-        "general_merchandise_total",
-        "home_improvement_total",
-        "medical_total",
-        "personal_care_total",
-        "general_services_total",
-        "government_and_non_profit_total",
-        "transportation_total",
-        "travel_total",
-        "rent_and_utilities_total",
+        "income",
+        "transfer_in",
+        "transfer_out",
+        "loan_payments",
+        "bank_fees",
+        "entertainment",
+        "food_and_drink",
+        "general_merchandise",
+        "home_improvement",
+        "medical",
+        "personal_care",
+        "general_services",
+        "government_and_non_profit",
+        "transportation",
+        "travel",
+        "rent_and_utilities",
     ]
 
-    for field in category_fields:
-        setattr(user, field, Decimal("0.00"))
+    for field_name in category_fields:
+        setattr(user.monthly_spending, field_name, Decimal("0.00"))
 
 
 def send_sms(message: str, to_number: str = None):
@@ -88,35 +67,6 @@ def get_user_by_phone(phone_number: str) -> User:
         db.session.commit()
         logger.info(f"Created new user with phone: {phone_number}")
     return user
-
-
-def map_plaid_category_to_budget(user: User, plaid_category: str) -> str:
-    """Map Plaid category to user's budget category, or return closest match."""
-    if not plaid_category:
-        return "Other"
-
-    # Direct mapping to our field names - much simpler!
-    plaid_to_budget_mapping = {
-        "income": "income",
-        "transfer_in": "transfer_in",
-        "transfer_out": "transfer_out",
-        "loan_payments": "loan_payments",
-        "bank_fees": "bank_fees",
-        "entertainment": "entertainment",
-        "food_and_drink": "food_and_drink",
-        "general_merchandise": "general_merchandise",
-        "home_improvement": "home_improvement",
-        "medical": "medical",
-        "personal_care": "personal_care",
-        "general_services": "general_services",
-        "government_and_non_profit": "government_and_non_profit",
-        "transportation": "transportation",
-        "travel": "travel",
-        "rent_and_utilities": "rent_and_utilities",
-    }
-
-    # Return mapped category or fallback to general_merchandise
-    return plaid_to_budget_mapping.get(plaid_category.lower(), "general_merchandise")
 
 
 def get_pending_transactions_for_verification(user: User) -> List[Dict[str, Any]]:
@@ -153,11 +103,13 @@ def get_pending_transactions_for_verification(user: User) -> List[Dict[str, Any]
 
                 # Only include transactions from current month
                 if current_month_start <= tx_date < current_month_end:
-                    # Smart category mapping
+                    # Use Plaid category directly since field names now match
                     plaid_category = (
-                        tx_data["category"][0] if tx_data["category"] else "Other"
+                        tx_data["category"][0]
+                        if tx_data["category"]
+                        else "general_merchandise"
                     )
-                    mapped_category = map_plaid_category_to_budget(user, plaid_category)
+                    mapped_category = plaid_category.lower()
 
                     transaction = {
                         "id": tx_data["transaction_id"],

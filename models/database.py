@@ -1,8 +1,10 @@
 from datetime import datetime
 
-from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import event
 
-db = SQLAlchemy()
+from server import db
+
+# TODO: maybe remove the updated_at, create_at, last_sync_date, etc.
 
 
 class User(db.Model):
@@ -89,3 +91,14 @@ class Budget(db.Model):
         default=datetime.now(datetime.timezone.utc),
         onupdate=datetime.now(datetime.timezone.utc),
     )
+
+
+@event.listens_for(User, "after_insert")
+def create_user_records(mapper, connection, target):
+    """Create Budget and MonthlySpending records immediately after User creation."""
+
+    budget = Budget(user_id=target.id)
+    connection.add(budget)
+
+    monthly_spending = MonthlySpending(user_id=target.id)
+    connection.add(monthly_spending)

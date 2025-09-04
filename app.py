@@ -13,6 +13,7 @@ from plaid.model.products import Products
 from twilio.twiml.messaging_response import MessagingResponse
 
 import config
+import logic as logic
 from models.api import (
     ConnectBankRequest,
     CreateLinkTokenRequest,
@@ -21,7 +22,7 @@ from models.api import (
     GetBudgetDataResponse,
     UpdateBudgetRequest,
 )
-from models.database import User, db
+from models.database import User
 from server import app, plaid_client
 from utils import (
     get_budget_status_text,
@@ -32,7 +33,11 @@ from utils import (
 )
 
 # TODO: fix logging
+# TODO: add return types throughout whole project
+
 logger = logging.getLogger(__name__)
+
+# TODO: remove db logic from here
 
 
 @app.route("/")
@@ -77,10 +82,7 @@ def connect_bank(body: ConnectBankRequest):
     exchange_request = ItemPublicTokenExchangeRequest(public_token=body.public_token)
     exchange_response = plaid_client.item_public_token_exchange(exchange_request)
 
-    user = get_user_by_phone(body.phone_number)
-    user.plaid_access_token = exchange_response["access_token"]
-    user.plaid_item_id = exchange_response["item_id"]
-    db.session.commit()
+    logic.connect_bank(body.phone_number, exchange_response)
 
     send_sms(
         "🎉 Bank account connected! Text 'balance' to see your budget status or 'help' for commands.",
@@ -99,45 +101,10 @@ def get_budget_data(body: GetBudgetDataRequest):
     Returns:
         Budget amounts and total monthly spend for a user.
     """
-    user = get_user_by_phone(body.phone_number)
+    budget_dict, spending_dict = logic.get_budget_data(body.phone_number)
 
-    budgets = GetBudgetDataResponse.Categories(
-        income=user.income_budget,
-        transfer_in=user.transfer_in_budget,
-        transfer_out=user.transfer_out_budget,
-        loan_payments=user.loan_payments_budget,
-        bank_fees=user.bank_fees_budget,
-        entertainment=user.entertainment_budget,
-        food_and_drink=user.food_and_drink_budget,
-        general_merchandise=user.general_merchandise_budget,
-        home_improvement=user.home_improvement_budget,
-        medical=user.medical_budget,
-        personal_care=user.personal_care_budget,
-        general_services=user.general_services_budget,
-        government_and_non_profit=user.government_and_non_profit_budget,
-        transportation=user.transportation_budget,
-        travel=user.travel_budget,
-        rent_and_utilities=user.rent_and_utilities_budget,
-    )
-
-    monthly_totals = GetBudgetDataResponse.Categories(
-        income=user.income_total,
-        transfer_in=user.transfer_in_total,
-        transfer_out=user.transfer_out_total,
-        loan_payments=user.loan_payments_total,
-        bank_fees=user.bank_fees_total,
-        entertainment=user.entertainment_total,
-        food_and_drink=user.food_and_drink_total,
-        general_merchandise=user.general_merchandise_total,
-        home_improvement=user.home_improvement_total,
-        medical=user.medical_total,
-        personal_care=user.personal_care_total,
-        general_services=user.general_services_total,
-        government_and_non_profit=user.government_and_non_profit_total,
-        transportation=user.transportation_total,
-        travel=user.travel_total,
-        rent_and_utilities=user.rent_and_utilities_total,
-    )
+    budgets = GetBudgetDataResponse.Categories(**budget_dict)
+    monthly_totals = GetBudgetDataResponse.Categories(**spending_dict)
 
     return GetBudgetDataResponse(budgets=budgets, monthly_totals=monthly_totals)
 
@@ -150,16 +117,9 @@ def update_budget(body: UpdateBudgetRequest):
     Args:
         body: Contains phone number of the user and budget limits.
     """
-    user = get_user_by_phone(body.phone_number)
-
     budget_updates = body.budgets.model_dump(exclude_none=True)
 
-    for field_name, value in budget_updates.items():
-        db_field_name = f"{field_name}_budget"
-        if hasattr(user, db_field_name):
-            setattr(user, db_field_name, value)
-
-    db.session.commit()
+    logic.update_budget(body.phone_number, budget_updates)
 
 
 # TODO: Fix this endpoint
@@ -183,6 +143,7 @@ def handle_sms():
 
 
 @app.route("/api/plaid/webhook", methods=["POST"])
+# TODO: fix the get User to include plaid_item_id and use here
 def plaid_webhook():
     """Handle webhooks from Plaid for real-time transaction updates."""
     webhook_data = request.get_json()

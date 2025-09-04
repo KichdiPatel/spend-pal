@@ -1,11 +1,14 @@
 import plaid
 from flask import Flask
 from flask_cors import CORS
+from flask_sqlalchemy import SQLAlchemy
 from plaid.api import plaid_api
 from twilio.rest import Client
 
 import config
-from models.database import db
+
+# Initialize SQLAlchemy
+db = SQLAlchemy()
 
 # Set up the Plaid environment
 host = (
