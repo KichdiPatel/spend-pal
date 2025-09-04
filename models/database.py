@@ -5,9 +5,8 @@ from flask_sqlalchemy import SQLAlchemy
 db = SQLAlchemy()
 
 
-# TODO: add a budget table, and monthly totals table
 class User(db.Model):
-    """User model with Plaid integration and monthly budget tracking."""
+    """User model with Plaid integration and basic user information."""
 
     __tablename__ = "users"
 
@@ -17,40 +16,76 @@ class User(db.Model):
     plaid_item_id = db.Column(db.String(255), nullable=True)
     plaid_cursor = db.Column(db.String(255), nullable=True)
     last_sync_date = db.Column(db.Date, nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now(datetime.timezone.utc))
 
-    # Current month spending totals by Plaid category
-    income_total = db.Column(db.Numeric(10, 2))  # 10 total digits, 2 decimal places
-    transfer_in_total = db.Column(db.Numeric(10, 2))
-    transfer_out_total = db.Column(db.Numeric(10, 2))
-    loan_payments_total = db.Column(db.Numeric(10, 2))
-    bank_fees_total = db.Column(db.Numeric(10, 2))
-    entertainment_total = db.Column(db.Numeric(10, 2))
-    food_and_drink_total = db.Column(db.Numeric(10, 2))
-    general_merchandise_total = db.Column(db.Numeric(10, 2))
-    home_improvement_total = db.Column(db.Numeric(10, 2))
-    medical_total = db.Column(db.Numeric(10, 2))
-    personal_care_total = db.Column(db.Numeric(10, 2))
-    general_services_total = db.Column(db.Numeric(10, 2))
-    government_and_non_profit_total = db.Column(db.Numeric(10, 2))
-    transportation_total = db.Column(db.Numeric(10, 2))
-    travel_total = db.Column(db.Numeric(10, 2))
-    rent_and_utilities_total = db.Column(db.Numeric(10, 2))
+    # Relationships
+    monthly_spending = db.relationship(
+        "MonthlySpending",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+    budgets = db.relationship("Budget", uselist=False, cascade="all, delete-orphan")
 
-    # Monthly budget limits
-    income_budget = db.Column(db.Numeric(10, 2))
-    transfer_in_budget = db.Column(db.Numeric(10, 2))
-    transfer_out_budget = db.Column(db.Numeric(10, 2))
-    loan_payments_budget = db.Column(db.Numeric(10, 2))
-    bank_fees_budget = db.Column(db.Numeric(10, 2))
-    entertainment_budget = db.Column(db.Numeric(10, 2))
-    food_and_drink_budget = db.Column(db.Numeric(10, 2))
-    general_merchandise_budget = db.Column(db.Numeric(10, 2))
-    home_improvement_budget = db.Column(db.Numeric(10, 2))
-    medical_budget = db.Column(db.Numeric(10, 2))
-    personal_care_budget = db.Column(db.Numeric(10, 2))
-    general_services_budget = db.Column(db.Numeric(10, 2))
-    government_and_non_profit_budget = db.Column(db.Numeric(10, 2))
-    transportation_budget = db.Column(db.Numeric(10, 2))
-    travel_budget = db.Column(db.Numeric(10, 2))
-    rent_and_utilities_budget = db.Column(db.Numeric(10, 2))
+
+class MonthlySpending(db.Model):
+    """Monthly spending totals by Plaid category."""
+
+    __tablename__ = "monthly_spending"
+
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), primary_key=True)
+
+    income = db.Column(db.Numeric(10, 2))
+    transfer_in = db.Column(db.Numeric(10, 2))
+    transfer_out = db.Column(db.Numeric(10, 2))
+    loan_payments = db.Column(db.Numeric(10, 2))
+    bank_fees = db.Column(db.Numeric(10, 2))
+    entertainment = db.Column(db.Numeric(10, 2))
+    food_and_drink = db.Column(db.Numeric(10, 2))
+    general_merchandise = db.Column(db.Numeric(10, 2))
+    home_improvement = db.Column(db.Numeric(10, 2))
+    medical = db.Column(db.Numeric(10, 2))
+    personal_care = db.Column(db.Numeric(10, 2))
+    general_services = db.Column(db.Numeric(10, 2))
+    government_and_non_profit = db.Column(db.Numeric(10, 2))
+    transportation = db.Column(db.Numeric(10, 2))
+    travel = db.Column(db.Numeric(10, 2))
+    rent_and_utilities = db.Column(db.Numeric(10, 2))
+
+    created_at = db.Column(db.DateTime, default=datetime.now(datetime.timezone.utc))
+    updated_at = db.Column(
+        db.DateTime,
+        default=datetime.now(datetime.timezone.utc),
+        onupdate=datetime.now(datetime.timezone.utc),
+    )
+
+
+class Budget(db.Model):
+    """Monthly budget limits by Plaid category."""
+
+    __tablename__ = "budgets"
+
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), primary_key=True)
+
+    income = db.Column(db.Numeric(10, 2))
+    transfer_in = db.Column(db.Numeric(10, 2))
+    transfer_out = db.Column(db.Numeric(10, 2))
+    loan_payments = db.Column(db.Numeric(10, 2))
+    bank_fees = db.Column(db.Numeric(10, 2))
+    entertainment = db.Column(db.Numeric(10, 2))
+    food_and_drink = db.Column(db.Numeric(10, 2))
+    general_merchandise = db.Column(db.Numeric(10, 2))
+    home_improvement = db.Column(db.Numeric(10, 2))
+    medical = db.Column(db.Numeric(10, 2))
+    personal_care = db.Column(db.Numeric(10, 2))
+    general_services = db.Column(db.Numeric(10, 2))
+    government_and_non_profit = db.Column(db.Numeric(10, 2))
+    transportation = db.Column(db.Numeric(10, 2))
+    travel = db.Column(db.Numeric(10, 2))
+    rent_and_utilities = db.Column(db.Numeric(10, 2))
+
+    created_at = db.Column(db.DateTime, default=datetime.now(datetime.timezone.utc))
+    updated_at = db.Column(
+        db.DateTime,
+        default=datetime.now(datetime.timezone.utc),
+        onupdate=datetime.now(datetime.timezone.utc),
+    )
