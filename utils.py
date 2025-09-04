@@ -222,7 +222,7 @@ def get_current_month_transactions(user: User) -> List[Dict[str, Any]]:
 
 
 def get_budget_status_text(user: User) -> str:
-    """Generate budget status text for SMS using stored monthly totals."""
+    """Generate budget status text for SMS showing spend vs budget with percentages for categories with spending > 0."""
     # Direct 1:1 mapping between budget fields and total fields
     budget_mapping = [
         ("Income", user.income_budget, user.income_total),
@@ -251,33 +251,46 @@ def get_budget_status_text(user: User) -> str:
         ),
     ]
 
-    # Filter to only show categories with budgets set
-    active_budgets = [
+    # Filter to only show categories where current spend > 0
+    categories_with_spending = [
         (name, budget, total)
         for name, budget, total in budget_mapping
-        if budget and budget > 0
+        if (total or Decimal("0")) > 0
     ]
 
-    if not active_budgets:
-        return "💰 No budget set. Set up your budget in the app first!"
+    if not categories_with_spending:
+        return "💰 No spending this month yet!"
 
-    status_lines = ["💰 Budget Status:"]
+    status_lines = ["💰 Budget Status (Categories with Spending):"]
     total_spent = Decimal("0")
     total_budget = Decimal("0")
 
-    # Direct 1:1 comparison - no complex logic needed!
-    for name, budget_limit, spent in active_budgets:
+    # Show spend vs budget with percentages
+    for name, budget_limit, spent in categories_with_spending:
         spent = spent or Decimal("0")
-        remaining = budget_limit - spent
+        budget_limit = budget_limit or Decimal("0")
+
+        if budget_limit > 0:
+            percentage = (spent / budget_limit) * 100
+            emoji = "🟢" if spent <= budget_limit else "🔴"
+            status_lines.append(
+                f"{emoji} {name}: ${spent:.2f}/${budget_limit:.2f} ({percentage:.1f}%)"
+            )
+        else:
+            # No budget set for this category
+            status_lines.append(f"⚪ {name}: ${spent:.2f} (no budget set)")
+
         total_spent += spent
         total_budget += budget_limit
 
-        emoji = "🟢" if remaining > 0 else "🔴"
-        status_lines.append(f"{emoji} {name}: ${spent:.0f}/${budget_limit:.0f}")
-
-    total_remaining = total_budget - total_spent
-    status_lines.append(f"\n💳 Total: ${total_spent:.0f}/{total_budget:.0f}")
-    status_lines.append(f"💰 Remaining: ${total_remaining:.0f}")
+    # Add summary
+    if total_budget > 0:
+        overall_percentage = (total_spent / total_budget) * 100
+        status_lines.append(
+            f"\n💳 Total: ${total_spent:.2f}/${total_budget:.2f} ({overall_percentage:.1f}%)"
+        )
+    else:
+        status_lines.append(f"\n💳 Total Spent: ${total_spent:.2f} (no budgets set)")
 
     return "\n".join(status_lines)
 
@@ -333,18 +346,25 @@ def get_recent_transactions_text(user: User, limit: int = 5) -> str:
     return "\n".join(lines)
 
 
+def sync_user_transactions(user: User):
+    """Sync transactions for a specific user and update monthly totals."""
+    try:
+        # Get transactions and update monthly totals
+        transactions = get_current_month_transactions(user)
+        if transactions:
+            logger.info(
+                f"Updated monthly totals for user {user.phone_number} - found {len(transactions)} transactions"
+            )
+        return True
+    except Exception as e:
+        logger.error(
+            f"Error syncing transactions for user {user.phone_number}: {str(e)}"
+        )
+        return False
+
+
 def sync_all_users():
     """Sync transactions for all users (now just updates cursors and monthly totals)."""
     users = User.query.filter(User.plaid_access_token.isnot(None)).all()
     for user in users:
-        try:
-            # Get transactions and update monthly totals
-            transactions = get_current_month_transactions(user)
-            if transactions:
-                logger.info(
-                    f"Updated monthly totals for user {user.phone_number} - found {len(transactions)} transactions to verify"
-                )
-        except Exception as e:
-            logger.error(
-                f"Error syncing transactions for user {user.phone_number}: {str(e)}"
-            )
+        sync_user_transactions(user)
