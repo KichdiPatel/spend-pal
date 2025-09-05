@@ -14,11 +14,20 @@ class User(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     phone_number = db.Column(db.String(20), unique=True, nullable=False)
-    plaid_access_token = db.Column(db.String(255), nullable=True)
-    plaid_item_id = db.Column(db.String(255), nullable=True)
-    plaid_cursor = db.Column(db.String(255), nullable=True)
+    plaid_access_token = db.Column(db.String(255), nullable=False)
+    plaid_item_id = db.Column(db.String(255), nullable=False)
+    plaid_cursor = db.Column(db.String(255), nullable=False)
     last_sync_date = db.Column(db.Date, nullable=True)
+
     created_at = db.Column(db.DateTime, default=datetime.now(datetime.timezone.utc))
+
+    currently_reconciling = db.Column(db.Boolean, default=False)
+    reconcile_category = db.Column(db.String(255), nullable=True)
+    reconcile_amount = db.Column(db.Numeric(10, 2), nullable=True)
+    reconcile_transaction_id = db.Column(db.String(255), nullable=True)
+    transaction_queue = db.Column(
+        db.JSON, nullable=True, default=list
+    )  # List of transaction IDs to process
 
     # Relationships
     monthly_spending = db.relationship(

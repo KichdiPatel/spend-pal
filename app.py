@@ -24,13 +24,6 @@ from models.api import (
 )
 from models.database import User
 from server import app, plaid_client
-from utils import (
-    get_budget_status_text,
-    get_user_by_phone,
-    send_sms,
-    sync_all_users,
-    sync_user_transactions,
-)
 
 # TODO: fix logging
 # TODO: add return types throughout whole project
@@ -84,11 +77,6 @@ def connect_bank(body: ConnectBankRequest):
 
     logic.connect_bank(body.phone_number, exchange_response)
 
-    send_sms(
-        "🎉 Bank account connected! Text 'balance' to see your budget status or 'help' for commands.",
-        body.phone_number,
-    )
-
 
 @app.route("/api/budget", methods=["GET"])
 @validate()
@@ -129,14 +117,8 @@ def handle_sms():
     from_number = request.form.get("From")
     message_body = request.form.get("Body", "").strip().lower()
 
-    user = get_user_by_phone(from_number)
+    response_text = logic.handle_sms(from_number, message_body)
 
-    if message_body == "status":
-        response_text = get_budget_status_text(user)
-    else:
-        response_text = "📱 SpendPal: Text 'balance' to see your budget status"
-
-    # Send response
     twiml_response = MessagingResponse()
     twiml_response.message(response_text)
     return str(twiml_response)
@@ -159,7 +141,7 @@ def plaid_webhook():
 
         user = User.query.filter_by(plaid_item_id=item_id).first()
         if user:
-            sync_user_transactions(user)
+            logic.sync_single_user(user)
             logger.info(f"Triggered sync for user {user.phone_number} via webhook")
 
     if webhook_code == "ERROR":
@@ -171,7 +153,7 @@ def plaid_webhook():
 def run_sync_scheduler():
     """Run the sync scheduler in the background."""
 
-    sync_all_users()
+    logic.sync_all_users()
     Timer(3600, run_sync_scheduler).start()
 
 
