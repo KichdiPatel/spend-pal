@@ -46,12 +46,11 @@ def handle_exception(e):
     return "Internal Server Error", 500
 
 
+# Initialize Database with app
 app.config["SQLALCHEMY_DATABASE_URI"] = config.DATABASE_URL
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 CORS(app)
 
-
-# Initialize Database with app
 db.init_app(app)
 
 with app.app_context():
