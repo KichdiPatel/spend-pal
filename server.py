@@ -10,6 +10,7 @@ import config
 
 db = SQLAlchemy()
 
+
 # Set up the Plaid client
 host = (
     plaid.Environment.Sandbox
@@ -29,8 +30,10 @@ configuration = plaid.Configuration(
 api_client = plaid.ApiClient(configuration)
 plaid_client = plaid_api.PlaidApi(api_client)
 
+
 # Initialize Twilio client
 twilio_client = Client(config.TWILIO_ACCOUNT_SID, config.TWILIO_AUTH_TOKEN)
+
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -46,6 +49,7 @@ def handle_exception(e):
 app.config["SQLALCHEMY_DATABASE_URI"] = config.DATABASE_URL
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 CORS(app)
+
 
 # Initialize Database with app
 db.init_app(app)
