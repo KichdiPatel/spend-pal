@@ -168,7 +168,9 @@ def update_budget(phone_number: str, budget_updates: dict) -> None:
 
 
 def handle_sms(phone_number: str, message_body: str) -> str:
-    """Handle SMS messages from a user.
+    """Handle SMS messages from a user. If the user is reconciling a transaction,
+    the message body is the amount they owe or 'correct'. If the user is not reconciling a transaction,
+    the message body can only be 'status'.
 
     Args:
         phone_number: Phone number of the user.
@@ -297,8 +299,15 @@ def plaid_webhook(item_id: str) -> None:
         sync_single_user(user)
 
 
-def sync_single_user(user: User):
-    """Check for new Plaid transactions and start reconciliation if needed."""
+def sync_single_user(user: User) -> None:
+    """Check for new Plaid transactions and start reconciliation if needed.
+    If the user is currently reconciling a transaction, this function does nothing.
+    If the user has a transaction in the queue, the function will start the reconciliation process.
+    Otherwise, the function will sync the user's transactions using plaid's cursor-based sync.
+
+    Args:
+        user: User object.
+    """
 
     if user.currently_reconciling:
         return
