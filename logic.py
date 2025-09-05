@@ -39,6 +39,88 @@ def _send_sms(message: str, to_number: str = None):
     )
 
 
+def _get_tx_attributes(user: User, transaction_id: str) -> dict:
+    """Get transaction attributes from Plaid using transaction ID.
+
+    Args:
+        user: User object with Plaid access token.
+        transaction_id: Plaid transaction ID.
+
+    Returns:
+        Dictionary with transaction attributes (amount, category, date, merchant, etc.)
+        Returns None if transaction not found.
+    """
+    try:
+        # Get transactions from the last 30 days to find our transaction
+        end_date = datetime.now().date()
+        start_date = end_date - timedelta(days=30)
+
+        request = TransactionsGetRequest(
+            access_token=user.plaid_access_token,
+            start_date=start_date,
+            end_date=end_date,
+            options=TransactionsGetRequestOptions(transaction_ids=[transaction_id]),
+        )
+
+        response = plaid_client.transactions_get(request).to_dict()
+
+        transactions = response.get("transactions", [])
+        if not transactions:
+            return None
+
+        tx = transactions[0]
+
+        # Extract and format transaction attributes
+        return {
+            "transaction_id": tx["transaction_id"],
+            "amount": abs(float(tx["amount"])),  # Plaid amounts are negative for debits
+            "category": (
+                tx["personal_finance_category"]["primary"].lower()
+                if tx["personal_finance_category"]["primary"]
+                else "general_merchandise"
+            ),
+            "date": tx["date"],
+            "merchant_name": tx["merchant_name"] or tx["name"],
+            "account_id": tx["account_id"],
+            "pending": tx["pending"],
+            "subcategory": (
+                tx["personal_finance_category"]["detailed"]
+                if tx["personal_finance_category"]["detailed"]
+                else None
+            ),
+            "original_amount": float(tx["amount"]),
+        }
+
+    except Exception as e:
+        import logging
+
+        logger = logging.getLogger(__name__)
+        logger.error(
+            f"Error getting transaction attributes for {transaction_id}: {str(e)}"
+        )
+        return None
+
+
+def _clear_monthly_spending(user: User) -> None:
+    """Clear all spending values in MonthlySpending table for a given user.
+
+    Args:
+        user: User object to clear spending for.
+    """
+    monthly_spending = user.monthly_spending
+
+    spending_fields = [
+        col.name
+        for col in monthly_spending.__table__.columns
+        if col.name not in ["user_id", "created_at", "updated_at"]
+    ]
+
+    for field in spending_fields:
+        setattr(monthly_spending, field, None)
+
+    db.session.commit()
+
+
 def connect_bank(phone_number: str, exchange_response: dict) -> None:
     """Connect bank account using public token.
 
@@ -123,38 +205,47 @@ def handle_sms(phone_number: str, message_body: str) -> str:
     user = _get_user(phone_number=phone_number)
     message_body = message_body.strip("$")
 
-    if user.currently_reconciling:
+    if user.current_reconciling_tx_id:
         if message_body == "status":
             return "Finishing reconciling before you can see your budget status!"
 
         elif message_body == "correct":
-            curr_amount = getattr(user.monthly_spending, user.reconcile_category)
-            amount = curr_amount + user.reconcile_amount
+            tx_attributes = _get_tx_attributes(user, user.current_reconciling_tx_id)
 
-            setattr(user.monthly_spending, user.reconcile_category, amount)
-            user.currently_reconciling = False
-            user.reconcile_category = None
-            user.reconcile_amount = None
-            user.reconcile_transaction_id = None
+            # Check if we're in a new month
+            tx_date = datetime.strptime(tx_attributes["date"], "%Y-%m-%d").date()
+            tx_month = tx_date.replace(day=1)
 
-            # Check for next transaction in queue
+            if user.current_month is None or user.current_month != tx_month:
+                _clear_monthly_spending(user)
+                user.current_month = tx_month
+
+            curr_amount = getattr(user.monthly_spending, tx_attributes["category"]) or 0
+            amount = curr_amount + tx_attributes["amount"]
+            setattr(user.monthly_spending, tx_attributes["category"], amount)
+            user.current_reconciling_tx_id = None
+            db.session.commit()
+
             sync_single_user(user)
-
             return "Transaction confirmed!"
 
         elif _valid_float(message_body):
-            curr_amount = getattr(user.monthly_spending, user.reconcile_category)
+            tx_attributes = _get_tx_attributes(user, user.current_reconciling_tx_id)
+
+            tx_date = datetime.strptime(tx_attributes["date"], "%Y-%m-%d").date()
+            tx_month = tx_date.replace(day=1)
+
+            if user.current_month is None or user.current_month != tx_month:
+                _clear_monthly_spending(user)
+                user.current_month = tx_month
+
+            curr_amount = getattr(user.monthly_spending, tx_attributes["category"]) or 0
             amount = curr_amount + float(message_body)
+            setattr(user.monthly_spending, tx_attributes["category"], amount)
+            user.current_reconciling_tx_id = None
+            db.session.commit()
 
-            setattr(user.monthly_spending, user.reconcile_category, amount)
-            user.currently_reconciling = False
-            user.reconcile_category = None
-            user.reconcile_amount = None
-            user.reconcile_transaction_id = None
-
-            # Check for next transaction in queue
             sync_single_user(user)
-
             return "Transaction confirmed!"
 
         else:
@@ -306,6 +397,4 @@ def sync_all_users():
         sync_single_user(user)
 
 
-# TODO: plaid webhook logic
-
-# TODO: sync scheduler logic
+# TODO: remove reconcile category, amount, etc and just have tx id

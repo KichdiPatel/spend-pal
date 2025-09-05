@@ -21,13 +21,9 @@ class User(db.Model):
 
     created_at = db.Column(db.DateTime, default=datetime.now(datetime.timezone.utc))
 
-    currently_reconciling = db.Column(db.Boolean, default=False)
-    reconcile_category = db.Column(db.String(255), nullable=True)
-    reconcile_amount = db.Column(db.Numeric(10, 2), nullable=True)
-    reconcile_transaction_id = db.Column(db.String(255), nullable=True)
-    transaction_queue = db.Column(
-        db.JSON, nullable=True, default=list
-    )  # List of transaction IDs to process
+    current_reconciling_tx_id = db.Column(db.String(255), nullable=True)
+    transaction_queue = db.Column(db.JSON, nullable=True, default=list)
+    current_month = db.Column(db.Date, nullable=True)
 
     # Relationships
     monthly_spending = db.relationship(
