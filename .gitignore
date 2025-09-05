@@ -5,6 +5,7 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
+.ruff_cache/
 .Python
 build/
 develop-eggs/

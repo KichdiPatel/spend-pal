@@ -1,14 +1,21 @@
-from datetime import datetime
-
 from sqlalchemy import event
 
 from server import db
 
-# TODO: maybe remove the updated_at, create_at, last_sync_date, etc.
-
 
 class User(db.Model):
-    """User model with Plaid integration and basic user information."""
+    """User model with Plaid integration and basic user information.
+
+    Args:
+        id: User id.
+        phone_number: User's phone number.
+        plaid_access_token: Plaid access token.
+        plaid_item_id: Plaid item id.
+        plaid_cursor: Plaid cursor.
+        current_reconciling_tx_id: Current reconciling transaction id.
+        transaction_queue: Transaction queue.
+        current_month: Current month.
+    """
 
     __tablename__ = "users"
 
@@ -17,25 +24,39 @@ class User(db.Model):
     plaid_access_token = db.Column(db.String(255), nullable=False)
     plaid_item_id = db.Column(db.String(255), nullable=False)
     plaid_cursor = db.Column(db.String(255), nullable=False)
-    last_sync_date = db.Column(db.Date, nullable=True)
-
-    created_at = db.Column(db.DateTime, default=datetime.now(datetime.timezone.utc))
 
     current_reconciling_tx_id = db.Column(db.String(255), nullable=True)
     transaction_queue = db.Column(db.JSON, nullable=True, default=list)
     current_month = db.Column(db.Date, nullable=True)
 
-    # Relationships
     monthly_spending = db.relationship(
-        "MonthlySpending",
-        uselist=False,
-        cascade="all, delete-orphan",
+        "MonthlySpending", uselist=False, cascade="all, delete-orphan"
     )
     budgets = db.relationship("Budget", uselist=False, cascade="all, delete-orphan")
 
 
 class MonthlySpending(db.Model):
-    """Monthly spending totals by Plaid category."""
+    """Monthly spending totals by Plaid category.
+
+    Args:
+        user_id: User id.
+        income: Income.
+        transfer_in: Transfer in.
+        transfer_out: Transfer out.
+        loan_payments: Loan payments.
+        bank_fees: Bank fees.
+        entertainment: Entertainment.
+        food_and_drink: Food and drink.
+        general_merchandise: General merchandise.
+        home_improvement: Home improvement.
+        medical: Medical.
+        personal_care: Personal care.
+        general_services: General services.
+        government_and_non_profit: Government and non-profit.
+        transportation: Transportation.
+        travel: Travel.
+        rent_and_utilities: Rent and utilities.
+    """
 
     __tablename__ = "monthly_spending"
 
@@ -58,16 +79,29 @@ class MonthlySpending(db.Model):
     travel = db.Column(db.Numeric(10, 2))
     rent_and_utilities = db.Column(db.Numeric(10, 2))
 
-    created_at = db.Column(db.DateTime, default=datetime.now(datetime.timezone.utc))
-    updated_at = db.Column(
-        db.DateTime,
-        default=datetime.now(datetime.timezone.utc),
-        onupdate=datetime.now(datetime.timezone.utc),
-    )
-
 
 class Budget(db.Model):
-    """Monthly budget limits by Plaid category."""
+    """Monthly budget limits by Plaid category.
+
+    Args:
+        user_id: User id.
+        income: Income.
+        transfer_in: Transfer in.
+        transfer_out: Transfer out.
+        loan_payments: Loan payments.
+        bank_fees: Bank fees.
+        entertainment: Entertainment.
+        food_and_drink: Food and drink.
+        general_merchandise: General merchandise.
+        home_improvement: Home improvement.
+        medical: Medical.
+        personal_care: Personal care.
+        general_services: General services.
+        government_and_non_profit: Government and non-profit.
+        transportation: Transportation.
+        travel: Travel.
+        rent_and_utilities: Rent and utilities.
+    """
 
     __tablename__ = "budgets"
 
@@ -89,13 +123,6 @@ class Budget(db.Model):
     transportation = db.Column(db.Numeric(10, 2))
     travel = db.Column(db.Numeric(10, 2))
     rent_and_utilities = db.Column(db.Numeric(10, 2))
-
-    created_at = db.Column(db.DateTime, default=datetime.now(datetime.timezone.utc))
-    updated_at = db.Column(
-        db.DateTime,
-        default=datetime.now(datetime.timezone.utc),
-        onupdate=datetime.now(datetime.timezone.utc),
-    )
 
 
 @event.listens_for(User, "after_insert")
