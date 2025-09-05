@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "A financial transaction management API with Plaid integration and SMS reconciliation"
 authors = ["Your Name <your.email@example.com>"]
 readme = "README.md"
-packages = [{include = "app"}, {include = "config"}, {include = "models"}, {include = "server"}, {include = "utils"}]
+packages = [{include = "models"}]
 
 [tool.poetry.dependencies]
 python = "^3.9"
@@ -17,6 +17,7 @@ flask-pydantic = "^0.10.0"
 twilio = "^8.0.0"
 gunicorn = "^21.0.0"
 psycopg2-binary = "^2.9.0"
+loguru = "^0.7.3"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.0.0"

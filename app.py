@@ -1,8 +1,8 @@
-import logging
 from threading import Timer
 
 from flask import render_template, request
 from flask_pydantic import validate
+from loguru import logger
 from plaid.model.country_code import CountryCode
 from plaid.model.item_public_token_exchange_request import (
     ItemPublicTokenExchangeRequest,
@@ -22,25 +22,18 @@ from models.api import (
     GetBudgetDataResponse,
     UpdateBudgetRequest,
 )
-from models.database import User
 from server import app, plaid_client
-
-# TODO: fix logging
-# TODO: add return types throughout whole project
-
-logger = logging.getLogger(__name__)
-
-# TODO: remove db logic from here
 
 
 @app.route("/")
 def index():
+    """Render the index page."""
     return render_template("index.html")
 
 
 @app.route("/api/create_link_token", methods=["POST"])
 @validate()
-def create_link_token(body: CreateLinkTokenRequest):
+def create_link_token(body: CreateLinkTokenRequest) -> CreateLinkTokenResponse:
     """Create a Plaid Link token for connecting bank accounts.
 
     Args:
@@ -66,7 +59,7 @@ def create_link_token(body: CreateLinkTokenRequest):
 
 @app.route("/api/connect_bank", methods=["POST"])
 @validate()
-def connect_bank(body: ConnectBankRequest):
+def connect_bank(body: ConnectBankRequest) -> None:
     """Connect bank account using public token.
 
     Args:
@@ -80,7 +73,7 @@ def connect_bank(body: ConnectBankRequest):
 
 @app.route("/api/budget", methods=["GET"])
 @validate()
-def get_budget_data(body: GetBudgetDataRequest):
+def get_budget_data(body: GetBudgetDataRequest) -> GetBudgetDataResponse:
     """Get budget amounts for a user.
 
     Args:
@@ -99,7 +92,7 @@ def get_budget_data(body: GetBudgetDataRequest):
 
 @app.route("/api/budget", methods=["PATCH"])
 @validate()
-def update_budget(body: UpdateBudgetRequest):
+def update_budget(body: UpdateBudgetRequest) -> None:
     """Update budget limits for a user.
 
     Args:
@@ -110,10 +103,13 @@ def update_budget(body: UpdateBudgetRequest):
     logic.update_budget(body.phone_number, budget_updates)
 
 
-# TODO: Fix this endpoint
 @app.route("/sms", methods=["POST"])
-def handle_sms():
-    """Handle incoming SMS messages."""
+def handle_sms() -> str:
+    """Handle incoming SMS messages.
+
+    Returns:
+        TwiML response.
+    """
     from_number = request.form.get("From")
     message_body = request.form.get("Body", "").strip().lower()
 
@@ -125,8 +121,7 @@ def handle_sms():
 
 
 @app.route("/api/plaid/webhook", methods=["POST"])
-# TODO: fix the get User to include plaid_item_id and use here
-def plaid_webhook():
+def plaid_webhook() -> None:
     """Handle webhooks from Plaid for real-time transaction updates."""
     webhook_data = request.get_json()
 
@@ -137,30 +132,19 @@ def plaid_webhook():
         webhook_type == "TRANSACTIONS"
         and webhook_code == "TRANSACTIONS_SYNC_UPDATES_AVAILABLE"
     ):
-        item_id = webhook_data.get("item_id")
+        logic.plaid_webhook(webhook_data.get("item_id"))
 
-        user = User.query.filter_by(plaid_item_id=item_id).first()
-        if user:
-            logic.sync_single_user(user)
-            logger.info(f"Triggered sync for user {user.phone_number} via webhook")
-
-    if webhook_code == "ERROR":
+    elif webhook_code == "ERROR":
         item_id = webhook_data.get("item_id")
-        user = User.query.filter_by(plaid_item_id=item_id).first()
         logger.exception(f"Received ERROR webhook for item_id: {item_id}")
 
 
 def run_sync_scheduler():
     """Run the sync scheduler in the background."""
-
     logic.sync_all_users()
     Timer(3600, run_sync_scheduler).start()
 
 
-# Start sync scheduler when app starts
 if __name__ == "__main__":
     run_sync_scheduler()
     app.run(debug=True)
-else:
-    # For production deployment
-    run_sync_scheduler()

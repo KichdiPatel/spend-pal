@@ -311,6 +311,18 @@ def handle_sms(phone_number: str, message_body: str) -> str:
     return response_text
 
 
+def plaid_webhook(item_id: str) -> None:
+    """Handle Plaid webhook.
+
+    Args:
+        item_id: Plaid item id.
+    """
+    user = _get_user(plaid_item_id=item_id)
+
+    if user:
+        sync_single_user(user)
+
+
 # TODO: fix this function
 def sync_single_user(user: User):
     """Check for new Plaid transactions and start reconciliation if needed."""
