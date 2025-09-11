@@ -74,22 +74,22 @@ class GetBudgetDataResponse(BaseModel):
             rent_and_utilities: Rent and utilities.
         """
 
-        income: float
-        transfer_in: float
-        transfer_out: float
-        loan_payments: float
-        bank_fees: float
-        entertainment: float
-        food_and_drink: float
-        general_merchandise: float
-        home_improvement: float
-        medical: float
-        personal_care: float
-        general_services: float
-        government_and_non_profit: float
-        transportation: float
-        travel: float
-        rent_and_utilities: float
+        income: float = 0.0
+        transfer_in: float = 0.0
+        transfer_out: float = 0.0
+        loan_payments: float = 0.0
+        bank_fees: float = 0.0
+        entertainment: float = 0.0
+        food_and_drink: float = 0.0
+        general_merchandise: float = 0.0
+        home_improvement: float = 0.0
+        medical: float = 0.0
+        personal_care: float = 0.0
+        general_services: float = 0.0
+        government_and_non_profit: float = 0.0
+        transportation: float = 0.0
+        travel: float = 0.0
+        rent_and_utilities: float = 0.0
 
     budgets: Categories
     monthly_totals: Categories
@@ -125,22 +125,22 @@ class UpdateBudgetRequest(BaseModel):
             rent_and_utilities: Rent and utilities.
         """
 
-        income: float | None
-        transfer_in: float | None
-        transfer_out: float | None
-        loan_payments: float | None
-        bank_fees: float | None
-        entertainment: float | None
-        food_and_drink: float | None
-        general_merchandise: float | None
-        home_improvement: float | None
-        medical: float | None
-        personal_care: float | None
-        general_services: float | None
-        government_and_non_profit: float | None
-        transportation: float | None
-        travel: float | None
-        rent_and_utilities: float | None
+        income: float | None = None
+        transfer_in: float | None = None
+        transfer_out: float | None = None
+        loan_payments: float | None = None
+        bank_fees: float | None = None
+        entertainment: float | None = None
+        food_and_drink: float | None = None
+        general_merchandise: float | None = None
+        home_improvement: float | None = None
+        medical: float | None = None
+        personal_care: float | None = None
+        general_services: float | None = None
+        government_and_non_profit: float | None = None
+        transportation: float | None = None
+        travel: float | None = None
+        rent_and_utilities: float | None = None
 
     phone_number: str
     budgets: Budgets

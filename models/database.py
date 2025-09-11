@@ -1,5 +1,3 @@
-from sqlalchemy import event
-
 from server import db
 
 
@@ -62,22 +60,22 @@ class MonthlySpending(db.Model):
 
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), primary_key=True)
 
-    income = db.Column(db.Numeric(10, 2))
-    transfer_in = db.Column(db.Numeric(10, 2))
-    transfer_out = db.Column(db.Numeric(10, 2))
-    loan_payments = db.Column(db.Numeric(10, 2))
-    bank_fees = db.Column(db.Numeric(10, 2))
-    entertainment = db.Column(db.Numeric(10, 2))
-    food_and_drink = db.Column(db.Numeric(10, 2))
-    general_merchandise = db.Column(db.Numeric(10, 2))
-    home_improvement = db.Column(db.Numeric(10, 2))
-    medical = db.Column(db.Numeric(10, 2))
-    personal_care = db.Column(db.Numeric(10, 2))
-    general_services = db.Column(db.Numeric(10, 2))
-    government_and_non_profit = db.Column(db.Numeric(10, 2))
-    transportation = db.Column(db.Numeric(10, 2))
-    travel = db.Column(db.Numeric(10, 2))
-    rent_and_utilities = db.Column(db.Numeric(10, 2))
+    income = db.Column(db.Numeric(10, 2), default=0)
+    transfer_in = db.Column(db.Numeric(10, 2), default=0)
+    transfer_out = db.Column(db.Numeric(10, 2), default=0)
+    loan_payments = db.Column(db.Numeric(10, 2), default=0)
+    bank_fees = db.Column(db.Numeric(10, 2), default=0)
+    entertainment = db.Column(db.Numeric(10, 2), default=0)
+    food_and_drink = db.Column(db.Numeric(10, 2), default=0)
+    general_merchandise = db.Column(db.Numeric(10, 2), default=0)
+    home_improvement = db.Column(db.Numeric(10, 2), default=0)
+    medical = db.Column(db.Numeric(10, 2), default=0)
+    personal_care = db.Column(db.Numeric(10, 2), default=0)
+    general_services = db.Column(db.Numeric(10, 2), default=0)
+    government_and_non_profit = db.Column(db.Numeric(10, 2), default=0)
+    transportation = db.Column(db.Numeric(10, 2), default=0)
+    travel = db.Column(db.Numeric(10, 2), default=0)
+    rent_and_utilities = db.Column(db.Numeric(10, 2), default=0)
 
 
 class Budget(db.Model):
@@ -107,30 +105,19 @@ class Budget(db.Model):
 
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), primary_key=True)
 
-    income = db.Column(db.Numeric(10, 2))
-    transfer_in = db.Column(db.Numeric(10, 2))
-    transfer_out = db.Column(db.Numeric(10, 2))
-    loan_payments = db.Column(db.Numeric(10, 2))
-    bank_fees = db.Column(db.Numeric(10, 2))
-    entertainment = db.Column(db.Numeric(10, 2))
-    food_and_drink = db.Column(db.Numeric(10, 2))
-    general_merchandise = db.Column(db.Numeric(10, 2))
-    home_improvement = db.Column(db.Numeric(10, 2))
-    medical = db.Column(db.Numeric(10, 2))
-    personal_care = db.Column(db.Numeric(10, 2))
-    general_services = db.Column(db.Numeric(10, 2))
-    government_and_non_profit = db.Column(db.Numeric(10, 2))
-    transportation = db.Column(db.Numeric(10, 2))
-    travel = db.Column(db.Numeric(10, 2))
-    rent_and_utilities = db.Column(db.Numeric(10, 2))
-
-
-@event.listens_for(User, "after_insert")
-def create_user_records(mapper, connection, target):
-    """Create Budget and MonthlySpending records immediately after User creation."""
-
-    budget = Budget(user_id=target.id)
-    connection.add(budget)
-
-    monthly_spending = MonthlySpending(user_id=target.id)
-    connection.add(monthly_spending)
+    income = db.Column(db.Numeric(10, 2), default=0)
+    transfer_in = db.Column(db.Numeric(10, 2), default=0)
+    transfer_out = db.Column(db.Numeric(10, 2), default=0)
+    loan_payments = db.Column(db.Numeric(10, 2), default=0)
+    bank_fees = db.Column(db.Numeric(10, 2), default=0)
+    entertainment = db.Column(db.Numeric(10, 2), default=0)
+    food_and_drink = db.Column(db.Numeric(10, 2), default=0)
+    general_merchandise = db.Column(db.Numeric(10, 2), default=0)
+    home_improvement = db.Column(db.Numeric(10, 2), default=0)
+    medical = db.Column(db.Numeric(10, 2), default=0)
+    personal_care = db.Column(db.Numeric(10, 2), default=0)
+    general_services = db.Column(db.Numeric(10, 2), default=0)
+    government_and_non_profit = db.Column(db.Numeric(10, 2), default=0)
+    transportation = db.Column(db.Numeric(10, 2), default=0)
+    travel = db.Column(db.Numeric(10, 2), default=0)
+    rent_and_utilities = db.Column(db.Numeric(10, 2), default=0)

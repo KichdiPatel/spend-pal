@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 
+from loguru import logger
 from plaid.model.transactions_get_request import TransactionsGetRequest
 from plaid.model.transactions_get_request_options import (
     TransactionsGetRequestOptions,
@@ -7,7 +8,7 @@ from plaid.model.transactions_get_request_options import (
 from plaid.model.transactions_sync_request import TransactionsSyncRequest
 
 import config
-from models.database import User
+from models.database import Budget, MonthlySpending, User
 from server import db, plaid_client, twilio_client
 
 
@@ -37,6 +38,7 @@ def _send_sms(message: str, to_number: str = None) -> None:
     message = twilio_client.messages.create(
         body=message, from_=config.TWILIO_PHONE_NUMBER, to=to_number
     )
+    logger.info(f"SMS sent to {to_number}")
 
 
 def _get_tx_attributes(user: User, transaction_id: str) -> dict:
@@ -117,12 +119,28 @@ def connect_bank(phone_number: str, exchange_response: dict) -> None:
         exchange_response: Exchange response from Plaid.
     """
     user = _get_user(phone_number=phone_number)
+
+    if user is None:
+        user = User(
+            phone_number=phone_number,
+            plaid_access_token="",
+            plaid_item_id="",
+            plaid_cursor="",
+        )
+        db.session.add(user)
+        db.session.flush()
+
+        budget = Budget(user_id=user.id)
+        monthly_spending = MonthlySpending(user_id=user.id)
+        db.session.add(budget)
+        db.session.add(monthly_spending)
+
     user.plaid_access_token = exchange_response["access_token"]
     user.plaid_item_id = exchange_response["item_id"]
     db.session.commit()
 
     _send_sms(
-        "🎉 Bank account connected! Text 'balance' to see your budget status or 'help' for commands.",
+        "🎉 Bank account connected! Text 'balance' to see your budget status.",
         phone_number,
     )
 
@@ -139,14 +157,14 @@ def get_budget_data(phone_number: str) -> tuple[dict, dict]:
     user = _get_user(phone_number=phone_number)
 
     budget_dict = {
-        k: v
+        k: v if v is not None else 0.0
         for k, v in user.budgets.__dict__.items()
         if not k.startswith("_")
         and k not in ["user_id", "month_year", "created_at", "updated_at"]
     }
 
     spending_dict = {
-        k: v
+        k: v if v is not None else 0.0
         for k, v in user.monthly_spending.__dict__.items()
         if not k.startswith("_") and k not in ["user_id", "created_at", "updated_at"]
     }
@@ -309,7 +327,7 @@ def sync_single_user(user: User) -> None:
         user: User object.
     """
 
-    if user.currently_reconciling:
+    if user.current_reconciling_tx_id:
         return
 
     if user.transaction_queue:
@@ -346,20 +364,27 @@ def sync_single_user(user: User) -> None:
             cursor=cursor,
         )
 
-        response = plaid_client.transactions_sync(request_data).to_dict()
-        new_transactions = response.get("added", [])
+        try:
+            response = plaid_client.transactions_sync(request_data).to_dict()
+            new_transactions = response.get("added", [])
 
-        if new_transactions:
-            transaction_ids = [tx["transaction_id"] for tx in new_transactions]
-            user.transaction_queue.extend(transaction_ids)
-            user.plaid_cursor = response.get("next_cursor", cursor)
-            db.session.commit()
+            if new_transactions:
+                transaction_ids = [tx["transaction_id"] for tx in new_transactions]
+                user.transaction_queue.extend(transaction_ids)
+                user.plaid_cursor = response.get("next_cursor", cursor)
+                db.session.commit()
 
-            sync_single_user(user)
-            return
+                sync_single_user(user)
+                return
 
-        if response.get("next_cursor"):
-            user.plaid_cursor = response["next_cursor"]
+            if response.get("next_cursor"):
+                user.plaid_cursor = response["next_cursor"]
+                db.session.commit()
+
+        except Exception as e:
+            logger.warning(f"Plaid sync error for user {user.phone_number}: {e}")
+
+            user.plaid_cursor = ""
             db.session.commit()
 
 

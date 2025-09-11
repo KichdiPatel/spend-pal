@@ -463,19 +463,19 @@ Flask = ">=0.9"
 
 [[package]]
 name = "flask-pydantic"
-version = "0.10.0"
-description = "Flask extension for integration with Pydantic library"
+version = "0.13.2"
+description = "Flask extension for integration with Pydantic library."
 optional = false
-python-versions = ">=3.6"
+python-versions = ">=3.7"
 groups = ["main"]
 files = [
-    {file = "Flask-Pydantic-0.10.0.tar.gz", hash = "sha256:abc5a5b0b63cb77312e55db632a62e9a614044c9c9618e6ffe5b30f4c4d2f2a7"},
-    {file = "Flask_Pydantic-0.10.0-py3-none-any.whl", hash = "sha256:a52e12d5c3d9f53c06edb4a138973d2bf6dea968269bcedc67751403ca70e856"},
+    {file = "flask_pydantic-0.13.2-py3-none-any.whl", hash = "sha256:7939855451ab64e3676122406b27177518e91ff12f655ac6d918d39c7834360c"},
+    {file = "flask_pydantic-0.13.2.tar.gz", hash = "sha256:ac6a4cb58a5d1ad6b99ce9c936f059101042800ed582360c9326b32867a9fdd3"},
 ]
 
 [package.dependencies]
 Flask = "*"
-pydantic = ">=1.7"
+pydantic = ">=2.0"
 
 [[package]]
 name = "flask-sqlalchemy"
@@ -1990,4 +1990,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.9"
-content-hash = "146b462231e4964a8d47cf68451b784116617de085c1e8a8dbb894cb94bfb231"
+content-hash = "0e9ec8d5a221f245e7db9efc934fdb5ffcdf9e274e725867e3ed2a27ce0397b0"
