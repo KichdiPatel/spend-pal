@@ -1,6 +1,7 @@
 import plaid
 from flask import Flask
 from flask_cors import CORS
+from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
 from loguru import logger
 from plaid.api import plaid_api
@@ -52,7 +53,7 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 CORS(app)
 
 db.init_app(app)
+migrate = Migrate(app, db)
 
 with app.app_context():
-    db.create_all()
     logger.info("Database initialized successfully.")

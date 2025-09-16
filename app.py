@@ -128,7 +128,8 @@ def handle_sms() -> str:
     response_text = logic.handle_sms(from_number, message_body)
 
     twiml_response = MessagingResponse()
-    twiml_response.message(response_text)
+    if response_text is not None:
+        twiml_response.message(response_text)
     return str(twiml_response)
 
 

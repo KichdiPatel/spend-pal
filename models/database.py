@@ -1,6 +1,3 @@
-from sqlalchemy.dialects.postgresql import JSON
-from sqlalchemy.ext.mutable import MutableList
-
 from server import db
 
 
@@ -27,13 +24,13 @@ class User(db.Model):
     plaid_cursor = db.Column(db.String(255), nullable=False)
 
     current_reconciling_tx_id = db.Column(db.String(255), nullable=True)
-    transaction_queue = db.Column(
-        MutableList.as_mutable(JSON), nullable=True, default=list
-    )
-    current_month = db.Column(db.Date, nullable=True)
+    # transaction_queue = db.Column(
+    #     MutableList.as_mutable(JSON), nullable=True, default=list
+    # )
+    # current_month = db.Column(db.Date, default=datetime.now().date())
 
     transactions = db.relationship(
-        "Transactions", uselist=False, cascade="all, delete-orphan"
+        "Transactions", backref="user", cascade="all, delete-orphan"
     )
     budgets = db.relationship("Budget", uselist=False, cascade="all, delete-orphan")
 
@@ -44,23 +41,25 @@ class Transactions(db.Model):
     Args:
         user_id: User id.
         amount: Transaction amount.
+        tx_id: Transaction id.
         plaid_category: Plaid category.
         date: Transaction date.
         merchant_name: Transaction merchant name.
-
-
+        reconciled: Whether the transaction has been reconciled.
     """
 
     __tablename__ = "Transactions"
 
+    id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(
-        db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+        db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
-
     amount = db.Column(db.Numeric(10, 2), default=0)
+    tx_id = db.Column(db.String(255), nullable=False)
     plaid_category = db.Column(db.String(255), nullable=False)
     date = db.Column(db.Date, nullable=False)
     merchant_name = db.Column(db.String(255), nullable=False)
+    reconciled = db.Column(db.Boolean, default=False)
 
 
 class Budget(db.Model):
