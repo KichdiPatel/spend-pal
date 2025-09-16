@@ -1,3 +1,5 @@
+"""SpendPal API Flask app database models."""
+
 from server import db
 
 
@@ -11,8 +13,6 @@ class User(db.Model):
         plaid_item_id: Plaid item id.
         plaid_cursor: Plaid cursor.
         current_reconciling_tx_id: Current reconciling transaction id.
-        transaction_queue: Transaction queue.
-        current_month: Current month.
     """
 
     __tablename__ = "users"
@@ -24,10 +24,6 @@ class User(db.Model):
     plaid_cursor = db.Column(db.String(255), nullable=False)
 
     current_reconciling_tx_id = db.Column(db.String(255), nullable=True)
-    # transaction_queue = db.Column(
-    #     MutableList.as_mutable(JSON), nullable=True, default=list
-    # )
-    # current_month = db.Column(db.Date, default=datetime.now().date())
 
     transactions = db.relationship(
         "Transactions", backref="user", cascade="all, delete-orphan"
@@ -39,9 +35,10 @@ class Transactions(db.Model):
     """Transactions for the current month recorded for all users.
 
     Args:
+        id: Transaction id.
         user_id: User id.
         amount: Transaction amount.
-        tx_id: Transaction id.
+        tx_id: Transaction id from Plaid.
         plaid_category: Plaid category.
         date: Transaction date.
         merchant_name: Transaction merchant name.

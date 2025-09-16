@@ -1,3 +1,5 @@
+"""SpendPal API Flask app logic."""
+
 from datetime import datetime
 from textwrap import dedent
 
@@ -30,7 +32,12 @@ def _get_user(
 
 
 def _send_sms(message: str, to_number: str = None) -> None:
-    """Send SMS message via Twilio."""
+    """Send SMS message via Twilio.
+
+    Args:
+        message: Message to send.
+        to_number: Phone number to send message to.
+    """
     to_number = to_number or config.USER_PHONE_NUMBER
     message = twilio_client.messages.create(
         body=message, from_=config.TWILIO_PHONE_NUMBER, to=to_number
@@ -109,7 +116,7 @@ def get_budget_data(phone_number: str) -> tuple[dict, dict]:
         phone_number: Phone number of the user.
 
     Returns:
-        Tuple of budget and spending data.
+        budget and spending data.
     """
     user = _get_user(phone_number=phone_number)
 
@@ -222,7 +229,7 @@ def handle_sms(phone_number: str, message_body: str) -> str | None:
         tx.reconciled = True
         db.session.commit()
 
-        # _send_sms("Transaction confirmed!", user.phone_number)  # Commented out to avoid twilio exepenses
+        # _send_sms("Transaction confirmed!", user.phone_number)  # Commented out to avoid extra twilio exepenses
         sync_single_user(user.phone_number)
         return None
 
@@ -282,7 +289,11 @@ def handle_sms(phone_number: str, message_body: str) -> str | None:
 
 
 def sync_single_user(phone_number: str) -> None:
-    """Sync single user."""
+    """Sync single user.
+
+    Args:
+        phone_number: Phone number of the user.
+    """
     logger.info(f"Syncing user {phone_number}")
     user = _get_user(phone_number=phone_number)
 
@@ -358,7 +369,11 @@ def sync_single_user(phone_number: str) -> None:
 
 
 def sync_all_users():
-    """Sync all users."""
+    """Sync all users.
+
+    Args:
+        phone_number: Phone number of the user.
+    """
     users = User.query.all()
     for user in users:
         sync_single_user(user.phone_number)

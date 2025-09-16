@@ -1,3 +1,5 @@
+"""SpendPal API Flask app."""
+
 from threading import Timer
 
 from flask import render_template, request
@@ -29,14 +31,14 @@ from server import app, plaid_client
 
 # TODO: Eventually move UI outside of this Flaskapp.
 @app.route("/")
-def index():
+def index() -> str:
     """Render the index page."""
     return render_template("index.html")
 
 
 # TODO: Eventually remove this. It's here to prevent 404 errors.
 @app.route("/favicon.ico")
-def favicon():
+def favicon() -> str:
     """Handle favicon requests to prevent 404 errors."""
     return "", 204
 
@@ -50,7 +52,7 @@ def create_link_token(body: CreateLinkTokenRequest) -> CreateLinkTokenResponse:
         body: Contains phone number of the user.
 
     Returns:
-        Plaid link token.
+        HTTP 200: Plaid link token.
     """
     response = plaid_client.link_token_create(
         LinkTokenCreateRequest(
@@ -74,6 +76,9 @@ def connect_bank(body: ConnectBankRequest) -> GeneralResponse:
 
     Args:
         body: Contains phone number of the user and public token.
+
+    Returns:
+        HTTP 200: Bank account connected successfully message.
     """
     exchange_request = ItemPublicTokenExchangeRequest(public_token=body.public_token)
     exchange_response = plaid_client.item_public_token_exchange(exchange_request)
@@ -89,6 +94,9 @@ def delete_user(body: DeleteUserRequest) -> GeneralResponse:
 
     Args:
         body: Contains phone number of the user.
+
+    Returns:
+        HTTP 204: User deleted successfully.
     """
     logic.delete_user(body.phone_number)
     return "", 204
@@ -103,7 +111,7 @@ def get_budget_data(query: GetBudgetDataRequest) -> GetBudgetDataResponse:
         query: Contains phone number of the user.
 
     Returns:
-        Budget amounts and total monthly spend for a user.
+        HTTP 200: Budget amounts and total monthly spend for a user.
     """
     budget_dict, spending_dict = logic.get_budget_data(query.phone_number)
 
@@ -120,6 +128,9 @@ def update_budget(body: UpdateBudgetRequest) -> GeneralResponse:
 
     Args:
         body: Contains phone number of the user and budget limits.
+
+    Returns:
+        HTTP 200: Budget updated successfully message.
     """
     budget_updates = body.budgets.model_dump(exclude_none=True)
 
@@ -132,7 +143,7 @@ def handle_sms() -> str:
     """Handle incoming SMS messages.
 
     Returns:
-        TwiML response.
+        HTTP 200: TwiML response.
     """
     from_number = request.form.get("From")
     message_body = request.form.get("Body", "").strip().lower()
@@ -147,7 +158,11 @@ def handle_sms() -> str:
 
 @app.route("/api/plaid/webhook", methods=["POST"])
 def plaid_webhook() -> GeneralResponse:
-    """Handle webhooks from Plaid for real-time transaction updates."""
+    """Handle webhooks from Plaid for real-time transaction updates.
+
+    Returns:
+        HTTP 200: OK message.
+    """
     webhook_data = request.get_json()
 
     webhook_type = webhook_data.get("webhook_type")
@@ -167,6 +182,7 @@ def plaid_webhook() -> GeneralResponse:
 
 
 if __name__ == "__main__":
+    """Run the app. Sync all users every hour."""
 
     def sync_with_context():
         with app.app_context():

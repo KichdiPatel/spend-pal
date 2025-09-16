@@ -1,3 +1,5 @@
+"""SpendPal API Flask app server. Initializes the Plaid client, Twilio client, and Flask app."""
+
 import plaid
 from flask import Flask
 from flask_cors import CORS

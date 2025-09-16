@@ -1,3 +1,5 @@
+"""SpendPal API Flask app models."""
+
 from pydantic import BaseModel
 
 
