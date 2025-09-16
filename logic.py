@@ -2,9 +2,6 @@ from datetime import datetime, timedelta
 
 from loguru import logger
 from plaid.model.transactions_get_request import TransactionsGetRequest
-from plaid.model.transactions_get_request_options import (
-    TransactionsGetRequestOptions,
-)
 from plaid.model.transactions_sync_request import TransactionsSyncRequest
 
 import config
@@ -59,16 +56,21 @@ def _get_tx_attributes(user: User, transaction_id: str) -> dict:
         access_token=user.plaid_access_token,
         start_date=start_date,
         end_date=end_date,
-        options=TransactionsGetRequestOptions(transaction_ids=[transaction_id]),
     )
 
     response = plaid_client.transactions_get(request).to_dict()
 
     transactions = response.get("transactions", [])
-    if not transactions:
-        return None
 
-    tx = transactions[0]
+    # Find the specific transaction by ID
+    tx = None
+    for transaction in transactions:
+        if transaction["transaction_id"] == transaction_id:
+            tx = transaction
+            break
+
+    if not tx:
+        return None
 
     return {
         "transaction_id": tx["transaction_id"],
@@ -134,9 +136,21 @@ def connect_bank(phone_number: str, exchange_response: dict) -> None:
         monthly_spending = MonthlySpending(user_id=user.id)
         db.session.add(budget)
         db.session.add(monthly_spending)
+    else:
+        budget = user.budgets
+        monthly_spending = user.monthly_spending
+
+        for field in budget.__table__.columns:
+            if field.name != "user_id":
+                setattr(budget, field.name, None)
+
+        for field in monthly_spending.__table__.columns:
+            if field.name != "user_id":
+                setattr(monthly_spending, field.name, None)
 
     user.plaid_access_token = exchange_response["access_token"]
     user.plaid_item_id = exchange_response["item_id"]
+    user.plaid_cursor = ""
     db.session.commit()
 
     _send_sms(
@@ -247,9 +261,9 @@ def handle_sms(phone_number: str, message_body: str) -> str:
         return "Transaction confirmed!"
 
     else:
-        if message_body == "status":
+        if message_body == "balance":
             spending_dict = {
-                k: v
+                k: v if v is not None else 0.0
                 for k, v in user.monthly_spending.__dict__.items()
                 if not k.startswith("_")
                 and k not in ["user_id", "created_at", "updated_at"]
@@ -268,7 +282,7 @@ def handle_sms(phone_number: str, message_body: str) -> str:
                 return "💰 No spending this month yet!"
 
             # TODO: update this format
-            status_lines = ["💰 Budget Status (Categories with Spending):"]
+            status_lines = ["💰 Budget Status (Categories with Spending):\n"]
             total_spent = 0
             total_budget = 0
 
@@ -326,17 +340,23 @@ def sync_single_user(user: User) -> None:
     Args:
         user: User object.
     """
+    logger.info(f"Syncing user {user.phone_number}")
+    logger.info(
+        f"Transaction queue LENGTH STARTING SYNC: {len(user.transaction_queue)}"
+    )
 
     if user.current_reconciling_tx_id:
         return
 
     if user.transaction_queue:
+        logger.info(f"Transaction queue FOUND: {len(user.transaction_queue)}")
         transaction_id = user.transaction_queue.pop(0)
 
         tx_attrs = _get_tx_attributes(user, transaction_id)
 
         if not tx_attrs:
             db.session.commit()
+            db.session.refresh(user)
             sync_single_user(user)
             return
 
@@ -366,25 +386,41 @@ def sync_single_user(user: User) -> None:
 
         try:
             response = plaid_client.transactions_sync(request_data).to_dict()
+            # logger.info(f"Plaid sync response: {response}")
             new_transactions = response.get("added", [])
-
+            logger.info(f"New transactions: {len(new_transactions)}")
             if new_transactions:
                 transaction_ids = [tx["transaction_id"] for tx in new_transactions]
+                # logger.info(f"Transaction IDs: {transaction_ids}")
                 user.transaction_queue.extend(transaction_ids)
+                logger.info(f"Transaction queue: {len(user.transaction_queue)}")
                 user.plaid_cursor = response.get("next_cursor", cursor)
                 db.session.commit()
 
+                db.session.refresh(user)
+
+                check_user = _get_user(phone_number=user.phone_number)
+                logger.info(
+                    f"Transaction queue LENGTH AFTER SYNC: {len(check_user.transaction_queue)}"
+                )
                 sync_single_user(user)
                 return
 
-            if response.get("next_cursor"):
+            elif response.get("next_cursor"):
                 user.plaid_cursor = response["next_cursor"]
                 db.session.commit()
 
         except Exception as e:
-            logger.warning(f"Plaid sync error for user {user.phone_number}: {e}")
+            error_msg = str(e)
+            if "INVALID_ACCESS_TOKEN" in error_msg and "environment" in error_msg:
+                logger.error(
+                    f"Environment mismatch for user {user.phone_number}: Access token is for different Plaid environment"
+                )
+            else:
+                logger.warning(f"Plaid sync error for user {user.phone_number}: {e}")
 
             user.plaid_cursor = ""
+            _clear_monthly_spending(user)
             db.session.commit()
 
 

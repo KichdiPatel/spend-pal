@@ -1,3 +1,6 @@
+from sqlalchemy.dialects.postgresql import JSON
+from sqlalchemy.ext.mutable import MutableList
+
 from server import db
 
 
@@ -24,58 +27,40 @@ class User(db.Model):
     plaid_cursor = db.Column(db.String(255), nullable=False)
 
     current_reconciling_tx_id = db.Column(db.String(255), nullable=True)
-    transaction_queue = db.Column(db.JSON, nullable=True, default=list)
+    transaction_queue = db.Column(
+        MutableList.as_mutable(JSON), nullable=True, default=list
+    )
     current_month = db.Column(db.Date, nullable=True)
 
-    monthly_spending = db.relationship(
-        "MonthlySpending", uselist=False, cascade="all, delete-orphan"
+    transactions = db.relationship(
+        "Transactions", uselist=False, cascade="all, delete-orphan"
     )
     budgets = db.relationship("Budget", uselist=False, cascade="all, delete-orphan")
 
 
-class MonthlySpending(db.Model):
-    """Monthly spending totals by Plaid category.
+class Transactions(db.Model):
+    """Transactions for the current month recorded for all users.
 
     Args:
         user_id: User id.
-        income: Income.
-        transfer_in: Transfer in.
-        transfer_out: Transfer out.
-        loan_payments: Loan payments.
-        bank_fees: Bank fees.
-        entertainment: Entertainment.
-        food_and_drink: Food and drink.
-        general_merchandise: General merchandise.
-        home_improvement: Home improvement.
-        medical: Medical.
-        personal_care: Personal care.
-        general_services: General services.
-        government_and_non_profit: Government and non-profit.
-        transportation: Transportation.
-        travel: Travel.
-        rent_and_utilities: Rent and utilities.
+        amount: Transaction amount.
+        plaid_category: Plaid category.
+        date: Transaction date.
+        merchant_name: Transaction merchant name.
+
+
     """
 
-    __tablename__ = "monthly_spending"
+    __tablename__ = "Transactions"
 
-    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), primary_key=True)
+    user_id = db.Column(
+        db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
 
-    income = db.Column(db.Numeric(10, 2), default=0)
-    transfer_in = db.Column(db.Numeric(10, 2), default=0)
-    transfer_out = db.Column(db.Numeric(10, 2), default=0)
-    loan_payments = db.Column(db.Numeric(10, 2), default=0)
-    bank_fees = db.Column(db.Numeric(10, 2), default=0)
-    entertainment = db.Column(db.Numeric(10, 2), default=0)
-    food_and_drink = db.Column(db.Numeric(10, 2), default=0)
-    general_merchandise = db.Column(db.Numeric(10, 2), default=0)
-    home_improvement = db.Column(db.Numeric(10, 2), default=0)
-    medical = db.Column(db.Numeric(10, 2), default=0)
-    personal_care = db.Column(db.Numeric(10, 2), default=0)
-    general_services = db.Column(db.Numeric(10, 2), default=0)
-    government_and_non_profit = db.Column(db.Numeric(10, 2), default=0)
-    transportation = db.Column(db.Numeric(10, 2), default=0)
-    travel = db.Column(db.Numeric(10, 2), default=0)
-    rent_and_utilities = db.Column(db.Numeric(10, 2), default=0)
+    amount = db.Column(db.Numeric(10, 2), default=0)
+    plaid_category = db.Column(db.String(255), nullable=False)
+    date = db.Column(db.Date, nullable=False)
+    merchant_name = db.Column(db.String(255), nullable=False)
 
 
 class Budget(db.Model):
@@ -101,9 +86,11 @@ class Budget(db.Model):
         rent_and_utilities: Rent and utilities.
     """
 
-    __tablename__ = "budgets"
+    __tablename__ = "Budget"
 
-    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), primary_key=True)
+    user_id = db.Column(
+        db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
 
     income = db.Column(db.Numeric(10, 2), default=0)
     transfer_in = db.Column(db.Numeric(10, 2), default=0)

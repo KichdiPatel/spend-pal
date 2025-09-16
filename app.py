@@ -160,6 +160,8 @@ def run_sync_scheduler():
     Timer(3600, run_sync_scheduler).start()
 
 
+# TODO: delete user endpoint
+
 if __name__ == "__main__":
     with app.app_context():
         run_sync_scheduler()
