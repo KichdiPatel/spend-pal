@@ -14,7 +14,7 @@ from twilio.twiml.messaging_response import MessagingResponse
 
 import config
 import logic as logic
-from models.api import (
+from models import (
     ConnectBankRequest,
     CreateLinkTokenRequest,
     CreateLinkTokenResponse,

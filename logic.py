@@ -5,7 +5,7 @@ from loguru import logger
 from plaid.model.transactions_sync_request import TransactionsSyncRequest
 
 import config
-from models.database import Budget, Transactions, User
+from database import Budget, Transactions, User
 from server import db, plaid_client, twilio_client
 
 
