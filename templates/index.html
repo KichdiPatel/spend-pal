@@ -17,6 +17,7 @@
     <button id="link-button">Connect Bank Account</button>
     <button id="get-budget-button">View Budget</button>
     <button id="update-budget-button">Update Budget</button>
+    <button id="delete-user-button" style="background-color: #dc3545; color: white;">Delete User</button>
     
     <div id="status"></div>
     
@@ -286,6 +287,39 @@
             // Show the budget form
             document.getElementById('budget-form').style.display = 'block';
             showStatus('Budget form is now visible. Fill in the values you want to update and click "Update Budget".');
+        };
+
+        document.getElementById('delete-user-button').onclick = function () {
+            const phoneNumber = getPhoneNumber();
+            if (!phoneNumber) return;
+
+            // Add confirmation dialog
+            if (!confirm(`Are you sure you want to delete the user with phone number ${phoneNumber}? This will delete ALL their data including transactions and budgets. This action cannot be undone!`)) {
+                return;
+            }
+
+            fetch('/api/user', {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    phone_number: phoneNumber
+                })
+            })
+            .then(response => {
+                if (response.status === 204) {
+                    showStatus('User deleted successfully!');
+                    // Clear the phone number field
+                    document.getElementById('phone-number').value = '';
+                } else {
+                    showStatus('Error deleting user', true);
+                }
+            })
+            .catch(error => {
+                console.error('Error deleting user:', error);
+                showStatus('Error deleting user', true);
+            });
         };
 
         // Handle budget form submission

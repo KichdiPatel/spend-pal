@@ -18,26 +18,19 @@ from models.api import (
     ConnectBankRequest,
     CreateLinkTokenRequest,
     CreateLinkTokenResponse,
+    DeleteUserRequest,
+    GeneralResponse,
     GetBudgetDataRequest,
     GetBudgetDataResponse,
     UpdateBudgetRequest,
 )
 from server import app, plaid_client
 
-# TODO: add return response types Pydantic
-
 
 @app.route("/")
 def index():
     """Render the index page."""
     return render_template("index.html")
-
-
-# TODO: remove this later
-@app.route("/favicon.ico")
-def favicon():
-    """Handle favicon requests to prevent 404 errors."""
-    return "", 204
 
 
 @app.route("/api/create_link_token", methods=["POST"])
@@ -68,7 +61,7 @@ def create_link_token(body: CreateLinkTokenRequest) -> CreateLinkTokenResponse:
 
 @app.route("/api/connect_bank", methods=["POST"])
 @validate()
-def connect_bank(body: ConnectBankRequest):
+def connect_bank(body: ConnectBankRequest) -> GeneralResponse:
     """Connect bank account using public token.
 
     Args:
@@ -78,7 +71,19 @@ def connect_bank(body: ConnectBankRequest):
     exchange_response = plaid_client.item_public_token_exchange(exchange_request)
 
     logic.connect_bank(body.phone_number, exchange_response)
-    return "Bank account connected successfully", 200
+    return GeneralResponse(message="Bank account connected successfully")
+
+
+@app.route("/api/user", methods=["DELETE"])
+@validate()
+def delete_user(body: DeleteUserRequest) -> GeneralResponse:
+    """Delete a user.
+
+    Args:
+        body: Contains phone number of the user.
+    """
+    logic.delete_user(body.phone_number)
+    return "", 204
 
 
 @app.route("/api/budget", methods=["GET"])
@@ -102,7 +107,7 @@ def get_budget_data(query: GetBudgetDataRequest) -> GetBudgetDataResponse:
 
 @app.route("/api/budget", methods=["PATCH"])
 @validate()
-def update_budget(body: UpdateBudgetRequest):
+def update_budget(body: UpdateBudgetRequest) -> GeneralResponse:
     """Update budget limits for a user.
 
     Args:
@@ -111,10 +116,9 @@ def update_budget(body: UpdateBudgetRequest):
     budget_updates = body.budgets.model_dump(exclude_none=True)
 
     logic.update_budget(body.phone_number, budget_updates)
-    return "Budget updated successfully", 200
+    return GeneralResponse(message="Budget updated successfully")
 
 
-# TODO: update to accept message errors to webhook from twilio
 @app.route("/sms", methods=["POST"])
 def handle_sms() -> str:
     """Handle incoming SMS messages.
@@ -134,7 +138,7 @@ def handle_sms() -> str:
 
 
 @app.route("/api/plaid/webhook", methods=["POST"])
-def plaid_webhook():
+def plaid_webhook() -> GeneralResponse:
     """Handle webhooks from Plaid for real-time transaction updates."""
     webhook_data = request.get_json()
 
@@ -151,19 +155,15 @@ def plaid_webhook():
         item_id = webhook_data.get("item_id")
         logger.exception(f"Received ERROR webhook for item_id: {item_id}")
 
-    return "OK", 200
+    return GeneralResponse(message="OK")
 
-
-def run_sync_scheduler():
-    """Run the sync scheduler in the background."""
-    with app.app_context():
-        logic.sync_all_users()
-    Timer(3600, run_sync_scheduler).start()
-
-
-# TODO: delete user endpoint
 
 if __name__ == "__main__":
-    with app.app_context():
-        run_sync_scheduler()
+
+    def sync_with_context():
+        with app.app_context():
+            logic.sync_all_users()
+        Timer(3600, sync_with_context).start()
+
+    sync_with_context()
     app.run(debug=True, host="0.0.0.0", port=5000, use_reloader=False)

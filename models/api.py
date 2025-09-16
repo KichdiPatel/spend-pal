@@ -34,6 +34,16 @@ class ConnectBankRequest(BaseModel):
     public_token: str
 
 
+class DeleteUserRequest(BaseModel):
+    """Delete User Request.
+
+    Args:
+        phone_number: User's phone number.
+    """
+
+    phone_number: str
+
+
 class GetBudgetDataRequest(BaseModel):
     """Get Budget Request.
 
@@ -144,3 +154,13 @@ class UpdateBudgetRequest(BaseModel):
 
     phone_number: str
     budgets: Budgets
+
+
+class GeneralResponse(BaseModel):
+    """General Response.
+
+    Args:
+        message: Message.
+    """
+
+    message: str

@@ -91,6 +91,17 @@ def connect_bank(phone_number: str, exchange_response: dict) -> None:
     )
 
 
+def delete_user(phone_number: str) -> None:
+    """Delete a user.
+
+    Args:
+        phone_number: Phone number of the user.
+    """
+    user = _get_user(phone_number=phone_number)
+    db.session.delete(user)
+    db.session.commit()
+
+
 def get_budget_data(phone_number: str) -> tuple[dict, dict]:
     """Get budget data for a user.
 
@@ -197,7 +208,7 @@ def handle_sms(phone_number: str, message_body: str) -> str | None:
             return "Finishing reconciling before you can see your budget status!"
 
         elif message_body == "correct":
-            tx.amount = tx.amount  # TODO: Should this just be continue?
+            pass
 
         elif _valid_float(message_body):
             tx.amount = float(message_body)
@@ -276,7 +287,7 @@ def sync_single_user(phone_number: str) -> None:
     user = _get_user(phone_number=phone_number)
 
     if not user or user.current_reconciling_tx_id:
-        return  # TODO: maybe better way to handle this?
+        return
 
     transactions = Transactions.query.filter(
         Transactions.user_id == user.id, Transactions.reconciled.is_(False)
