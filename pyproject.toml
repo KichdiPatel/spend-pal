@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "A financial transaction management API with Plaid integration and SMS reconciliation"
 authors = ["Your Name <your.email@example.com>"]
 readme = "README.md"
-packages = [{include = "models"}]
+package-mode = false
 
 [tool.poetry.dependencies]
 python = "^3.9"

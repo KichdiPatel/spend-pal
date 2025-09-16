@@ -27,10 +27,18 @@ from models import (
 from server import app, plaid_client
 
 
+# TODO: Eventually move UI outside of this Flaskapp.
 @app.route("/")
 def index():
     """Render the index page."""
     return render_template("index.html")
+
+
+# TODO: Eventually remove this. It's here to prevent 404 errors.
+@app.route("/favicon.ico")
+def favicon():
+    """Handle favicon requests to prevent 404 errors."""
+    return "", 204
 
 
 @app.route("/api/create_link_token", methods=["POST"])

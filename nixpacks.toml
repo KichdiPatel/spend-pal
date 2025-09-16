@@ -1,0 +1,5 @@
+[phases.install]
+cmds = ["poetry install --no-dev"]
+
+[start]
+cmd = "poetry run gunicorn app:app"
