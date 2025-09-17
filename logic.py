@@ -257,13 +257,14 @@ def handle_sms(phone_number: str, message_body: str) -> str | None:
             ).all()
 
             budget_data = user.budgets.__dict__
-            full_spending_data = []
+
+            full_spending_data = {}
             for tx in current_transactions:
-                category = tx.plaid_category
                 amount = float(tx.amount) if tx.amount else 0.0
-                budget_val = budget_data.get(category, 0) or 0
-                display_name = category.replace("_", " ").title()
-                full_spending_data.append((display_name, budget_val, amount))
+                full_spending_data[tx.plaid_category] = (
+                    full_spending_data.get(tx.plaid_category, (0, 0))[0] + amount,
+                    budget_data.get(tx.plaid_category, 0) or 0,
+                )
 
             logger.info(f"Full spending data: {full_spending_data}")
             if not full_spending_data:
@@ -275,7 +276,7 @@ def handle_sms(phone_number: str, message_body: str) -> str | None:
             total_spent = 0
             total_budget = 0
 
-            for name, budget_limit, spent in full_spending_data:
+            for name, (spent, budget_limit) in full_spending_data.items():
                 percentage = (spent / budget_limit) * 100 if budget_limit > 0 else 0
                 emoji = "🟢" if spent <= budget_limit else "🔴"
                 status_lines.append(
@@ -370,7 +371,7 @@ def sync_single_user(phone_number: str) -> None:
 
         message = dedent(f"""
             New Transaction:
-            Location: {tx.merchant_name}
+            Merchant: {tx.merchant_name}
             Date: {tx.date}
             Category: {tx.plaid_category.replace("_", " ").title()}
             Amount: ${tx.amount:.2f}
