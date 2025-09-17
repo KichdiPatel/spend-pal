@@ -1,50 +1,28 @@
 # SpendPal API
 
-A simple SMS-based budget tracking API with Plaid integration for bank account connection and smart transaction splitting.
 
-## Features
+### The Problem
+Most budgeting apps/tools are extremely complicated. It makes budgeting too overwhelming for beginners who really just need to get into the routine of being more conscious of their spending. 
 
-- **SMS Interface**: Manage your budget via text messages
-- **Plaid Integration**: Connect bank accounts and sync monthly spending totals
-- **Bill Splitting Support**: Users can adjust transaction amounts for shared expenses
-- **Smart Categorization**: Auto-map Plaid categories to your budget categories
-- **Secure Storage**: Only monthly totals stored locally, no individual transaction data
-- **Request Validation**: Pydantic models for robust API validation with detailed error messages
-- **RESTful API**: Clean API endpoints for frontend integration
+### What Spend Pal Does
+
+SpendPal is a SMS-based budget tracker built for beginner budgeters. The idea is to make budgeting as simple as possible in the native SMS app that people open everyday anyway. 
+
+Through the UI, you simply connect your credit card through plaid, and enter your budgets for different categories. Then, you are set! Everything will then be managed through your text messages. Through SMS you can set if a transactions was split amongst friends, and anytime see your current budget status by texting 'budget'.
+
+This is currently only running personally for myself, but the API is built in a way to support multiple users. 
+
 
 ## Tech Stack
 
-- **Backend**: Flask (Python) with modular architecture
+- **Backend**: Flask (Python)
 - **Database**: PostgreSQL with SQLAlchemy ORM
 - **SMS**: Twilio API
 - **Banking**: Plaid API
 - **Package Management**: Poetry
 - **Deployment**: Gunicorn
 
-## Project Structure
-
-```
-spend-pal-api/
-├── app.py          # Main Flask routes and API endpoints
-├── config.py       # Environment variables and configuration
-├── models.py       # Database models (User, Transaction, BudgetCategory)
-├── server.py       # Flask app initialization and client setup
-├── utils.py        # Helper functions and business logic
-├── pyproject.toml  # Poetry configuration
-├── README.md       # Documentation
-└── templates/
-    └── index.html  # Plaid Link integration page
-```
-
-## Prerequisites
-
-- Python 3.9+
-- PostgreSQL database
-- Plaid account and API credentials
-- Twilio account and phone number
-- Poetry (for dependency management)
-
-## Installation
+## QuickStart
 
 1. **Clone the repository**
    ```bash
@@ -62,6 +40,8 @@ spend-pal-api/
    poetry install
    ```
 
+4. **Set up a database that spendpal can point to, Twilio account, and a Plaid account**
+
 4. **Set up environment variables**
    Create a `.env` file in the root directory:
    ```env
@@ -77,153 +57,43 @@ spend-pal-api/
    TWILIO_ACCOUNT_SID=your_twilio_account_sid
    TWILIO_AUTH_TOKEN=your_twilio_auth_token
    TWILIO_PHONE_NUMBER=+1234567890
-   USER_PHONE_NUMBER=+1987654321
 
    # Database Configuration
    DATABASE_URL=postgresql://username:password@localhost:5432/spendpal
-
-   # Server Configuration
-   PORT=5000
-   ```
-
-5. **Set up the database**
-   ```bash
-   # Create PostgreSQL database
-   createdb spendpal
-
-   # Run the application to create tables
-   poetry run python app.py
    ```
 
 ## Running the Application
 
 ### Development
 ```bash
-poetry run python app.py
+poetry run gunicorn app:app
 ```
 
-### Production
+### Production (Railway)
 ```bash
-poetry run gunicorn -w 4 -b 0.0.0.0:5000 app:app
+poetry run gunicorn --bind 0.0.0.0:$PORT app:app
 ```
 
-## API Endpoints
+## Code Information
 
-### Bank Account Setup
-- `POST /api/create_link_token` - Create Plaid Link token for bank connection
-- `POST /api/connect_bank` - Connect bank account using public token
-
-### Budget Management
-- `GET /api/budget?phone_number={phone}` - Get budget categories and spending
-- `POST /api/budget` - Set budget categories for a user
-
-### Budget Management
-- `GET /api/budget?phone_number={phone}` - Get budget categories and spending from monthly totals
-- `POST /api/budget` - Set budget categories for a user
-- `GET /api/monthly-totals?phone_number={phone}` - Get current month spending by Plaid category
-- `GET /api/categories?phone_number={phone}` - Get available categories for reference
-
-### Transaction Verification
-- `GET /api/transactions/pending?phone_number={phone}` - Get transactions needing verification
-- `POST /api/transactions/verify` - Verify transaction and update monthly totals
-
-### SMS Interface
-- `POST /sms` - Handle incoming SMS messages (Twilio webhook)
-
-### System
-- `GET /api/health` - Health check endpoint
-
-## SMS Commands
-
-Text these commands to your Twilio phone number:
-- **help** - Show available commands
-- **balance** - See your current budget status from monthly totals
-- **recent** - View monthly spending by category
-- **pending** - View transactions needing verification
-- **sync** - Manually refresh transaction data from Plaid
-
-## Smart Categorization
-
-SpendPal automatically categorizes transactions using Plaid's real-time data:
-
-1. **Direct Match**: If Plaid's category matches your budget category exactly
-2. **Smart Mapping**: Maps Plaid categories to your budget categories:
-   - "Restaurants" → "Food" (if you have a "Food" budget)
-   - "Gas Stations" → "Transport" (if you have a "Transport" budget)
-   - "General Merchandise" → "Shopping" (if you have a "Shopping" budget)
-3. **Fallback**: Uses Plaid's original category if no mapping found
-
-### Benefits of Monthly Totals Approach
-- **Bill Splitting Support**: Users can adjust amounts for shared expenses
-- **Secure Storage**: Only monthly totals stored, no individual transaction details
-- **Efficient Syncing**: Cursor-based updates with user verification
-- **Flexible Categorization**: Users can override Plaid categories when needed
-
-## Database Schema
-
-### Users Table
-- `id`: Primary key
-- `phone_number`: User's phone number (unique)
-- `plaid_access_token`: Plaid access token
-- `plaid_item_id`: Plaid item ID
-- `plaid_cursor`: Transaction sync cursor
-- `created_at`: Account creation timestamp
-
-### Budget Categories Table
-- `id`: Primary key
-- `user_id`: Foreign key to users table
-- `name`: Category name (e.g., "Food", "Shopping")
-- `monthly_limit`: Monthly spending limit
-- `created_at`: Category creation timestamp
-
-### Monthly Totals Storage
-Monthly spending totals are stored by Plaid category (e.g., `food_and_drink_total`, `transportation_total`). This approach:
-- **Supports bill splitting** - users can adjust amounts for shared expenses
-- **Minimal sensitive data** - only totals, not individual transactions
-- **Efficient syncing** - cursor-based updates with user verification
-- **Flexible categorization** - users can override Plaid categories when needed
-
-## Development
-
-### Code Formatting
-```bash
-poetry run black .
-poetry run flake8 .
-poetry run mypy .
-```
-
-### Testing
-```bash
-poetry run pytest
-```
+- All routes are set in app.py
+- Business logic for all the endpoints are in logic.py
+- The database schema is written in database.py
+- The API response and request models are in models.py
+- The plaid client, twilio client, database, and flask app, are initiliazed in server.py
 
 ## Deployment
 
 ### Environment Variables
-Ensure all required environment variables are set in your production environment.
+Ensure all required environment variables are set in your production environment. 
+At this point, twilio, plaid and, the database should be setup. 
 
-### Database
-- Use a production PostgreSQL instance
-- Set up proper backups
-- Configure connection pooling
 
-### Process Management
-- Use a process manager like PM2 or systemd
-- Set up proper logging
-- Configure monitoring and alerting
+### Railway
+I deployed for personal use through Railway. They make it very simple to get started quickly. I can simply connect the github repo I operate out of and deploy from there.
+The nixpacks.toml file gives railway instructions on deployment of this project. 
 
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests if applicable
-5. Submit a pull request
-
-## License
-
-[Add your license here]
-
-## Support
-
-For support, please open an issue in the GitHub repository.
+## Future Plans
+- The UI is fully vibe coded simply to get Plaid operational and to be able to set/update my budget. So, I would eventually like to turn this into an app where you could complete that setup process. 
+- There is no implementation of API Keys right now since I am the only user, but that would be interesting also. 
+- Research better practices for storing transactions in a database, since I am storing fields like 'category', 'amount', 'merchant', etc. for max a month. 
