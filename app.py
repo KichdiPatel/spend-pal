@@ -189,13 +189,13 @@ def plaid_webhook() -> GeneralResponse:
     return GeneralResponse(message="OK")
 
 
-def sync_with_context():
+def sync_all():
     with app.app_context():
         logic.sync_all_users()
-    Timer(3600, sync_with_context).start()
+    Timer(3600, sync_all).start()
 
 
-sync_with_context()
+sync_all()
 
 # if __name__ == "__main__":
 #     """Run the app locally."""
