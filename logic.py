@@ -237,30 +237,9 @@ def handle_sms(phone_number: str, message_body: str) -> str | None:
 
     else:
         if message_body == "balance":
-            current_month = datetime.now().date().replace(day=1)
-            if current_month.month == 12:
-                next_month = current_month.replace(year=current_month.year + 1, month=1)
-            else:
-                next_month = current_month.replace(month=current_month.month + 1)
+            budget_dict, spending_dict = get_budget_data(user.phone_number)
 
-            current_transactions = Transactions.query.filter(
-                Transactions.user_id == user.id,
-                Transactions.date >= current_month,
-                Transactions.date < next_month,
-                Transactions.reconciled,
-            ).all()
-
-            budget_data = user.budgets.__dict__
-
-            full_spending_data = {}
-            for tx in current_transactions:
-                amount = float(tx.amount) if tx.amount else 0.0
-                full_spending_data[tx.plaid_category] = (
-                    full_spending_data.get(tx.plaid_category, (0, 0))[0] + amount,
-                    budget_data.get(tx.plaid_category, 0) or 0,
-                )
-
-            if not full_spending_data:
+            if not spending_dict:
                 return "💰 No spending this month yet!"
 
             # Format the spending and budget data into a message
@@ -268,15 +247,22 @@ def handle_sms(phone_number: str, message_body: str) -> str | None:
             total_spent = 0
             total_budget = 0
 
-            for name, (spent, budget_limit) in full_spending_data.items():
-                percentage = (spent / budget_limit) * 100 if budget_limit > 0 else 0
-                emoji = "🟢" if spent <= budget_limit else "🔴"
-                status_lines.append(
-                    f"{emoji} {name}: ${spent:.2f}/${budget_limit:.2f} ({percentage:.1f}%)"
-                )
+            all_categories = set(budget_dict.keys()) | set(spending_dict.keys())
 
-                total_spent += spent
-                total_budget += budget_limit
+            for category in all_categories:
+                spent = float(spending_dict.get(category, 0))
+                budget_limit = float(budget_dict.get(category, 0))
+
+                if spent > 0 or budget_limit > 0:
+                    percentage = (spent / budget_limit) * 100 if budget_limit > 0 else 0
+                    emoji = "🟢" if spent <= budget_limit else "🔴"
+                    display_name = category.replace("_", " ").title()
+                    status_lines.append(
+                        f"{emoji} {display_name}: ${spent:.2f}/${budget_limit:.2f} ({percentage:.1f}%)"
+                    )
+
+                    total_spent += spent
+                    total_budget += budget_limit
 
             overall_percentage = (
                 (total_spent / total_budget) * 100 if total_budget > 0 else 0
