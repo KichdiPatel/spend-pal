@@ -32,14 +32,22 @@ from server import app, plaid_client
 # TODO: Eventually move UI outside of this Flaskapp.
 @app.route("/")
 def index() -> str:
-    """Render the index page."""
+    """Render the index page.
+
+    Returns:
+        Index page.
+    """
     return render_template("index.html")
 
 
 # TODO: Eventually remove this. It's here to prevent 404 errors.
 @app.route("/favicon.ico")
 def favicon() -> str:
-    """Handle favicon requests to prevent 404 errors."""
+    """Handle favicon requests to prevent 404 errors.
+
+    Returns:
+        HTTP 204: No content.
+    """
     return "", 204
 
 

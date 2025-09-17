@@ -260,6 +260,7 @@ def handle_sms(phone_number: str, message_body: str) -> str | None:
             if not full_spending_data:
                 return "💰 No spending this month yet!"
 
+            # Format the spending and budget data into a message
             status_lines = ["💰 Budget Status:\n"]
             total_spent = 0
             total_budget = 0
@@ -304,6 +305,7 @@ def sync_single_user(phone_number: str) -> None:
         Transactions.user_id == user.id, Transactions.reconciled.is_(False)
     ).all()
 
+    # If there are no transactions to reconcile, get new transactions from Plaid
     if not transactions:
         user.current_reconciling_tx_id = None
         db.session.commit()
@@ -350,6 +352,7 @@ def sync_single_user(phone_number: str) -> None:
             db.session.commit()
             db.session.commit()
 
+    # If there are transactions to reconcile, set the current reconciling transaction id and send a message to the user
     else:
         tx = transactions[0]
         user.current_reconciling_tx_id = tx.tx_id
