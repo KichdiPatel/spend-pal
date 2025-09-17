@@ -204,10 +204,6 @@ def handle_sms(phone_number: str, message_body: str) -> str | None:
         except ValueError:
             return False
 
-    logger.info(
-        f"Handling SMS for user {phone_number} with message body {message_body}"
-    )
-
     user = _get_user(phone_number=phone_number)
     message_body = message_body.strip("$")
 
@@ -240,9 +236,7 @@ def handle_sms(phone_number: str, message_body: str) -> str | None:
         return None
 
     else:
-        logger.info("IN ELSE")
         if message_body == "balance":
-            logger.info("IN BALANCE")
             current_month = datetime.now().date().replace(day=1)
             if current_month.month == 12:
                 next_month = current_month.replace(year=current_month.year + 1, month=1)
@@ -266,11 +260,9 @@ def handle_sms(phone_number: str, message_body: str) -> str | None:
                     budget_data.get(tx.plaid_category, 0) or 0,
                 )
 
-            logger.info(f"Full spending data: {full_spending_data}")
             if not full_spending_data:
                 return "💰 No spending this month yet!"
 
-            logger.info("Full spending DATA")
             # Format the spending and budget data into a message
             status_lines = ["💰 Budget Status:\n"]
             total_spent = 0
@@ -306,7 +298,6 @@ def sync_single_user(phone_number: str) -> None:
     Args:
         phone_number: Phone number of the user.
     """
-    logger.info(f"Syncing user {phone_number}")
     user = _get_user(phone_number=phone_number)
 
     if not user or user.current_reconciling_tx_id:
