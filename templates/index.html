@@ -3,90 +3,379 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Plaid Link Example</title>
+    <title>Spend Pal - Budget Management</title>
     <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
 </head>
 <body>
-    <button id="link-button">Connect a bank account</button>
-    <button id="sync-button">Sync Transactions</button>
-    <div id="transactions"></div>
+    <h1>Spend Pal - Budget Management</h1>
+    
+    <div>
+        <label for="phone-number">Phone Number:</label>
+        <input type="tel" id="phone-number" placeholder="+1234567890" required>
+    </div>
+    
+    <button id="link-button">Connect Bank Account</button>
+    <button id="get-budget-button">View Budget</button>
+    <button id="update-budget-button">Update Budget</button>
+    <button id="delete-user-button" style="background-color: #dc3545; color: white;">Delete User</button>
+    
+    <div id="status"></div>
+    
+    <div id="budget-section" style="display: none;">
+        <h2>Budget Management</h2>
+        
+        <div style="display: flex; gap: 20px;">
+            <!-- Budget View Section -->
+            <div style="flex: 1;">
+                <h3>Current Budget</h3>
+                <div id="budget-data"></div>
+            </div>
+            
+            <!-- Budget Update Section -->
+            <div style="flex: 1;">
+                <h3>Update Budget</h3>
+                <form id="budget-form" style="display: none;">
+                    <div style="margin-bottom: 10px;">
+                        <label>Income: $</label>
+                        <input type="number" id="income" step="0.01" min="0">
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <label>Transfer In: $</label>
+                        <input type="number" id="transfer_in" step="0.01" min="0">
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <label>Transfer Out: $</label>
+                        <input type="number" id="transfer_out" step="0.01" min="0">
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <label>Loan Payments: $</label>
+                        <input type="number" id="loan_payments" step="0.01" min="0">
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <label>Bank Fees: $</label>
+                        <input type="number" id="bank_fees" step="0.01" min="0">
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <label>Entertainment: $</label>
+                        <input type="number" id="entertainment" step="0.01" min="0">
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <label>Food and Drink: $</label>
+                        <input type="number" id="food_and_drink" step="0.01" min="0">
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <label>General Merchandise: $</label>
+                        <input type="number" id="general_merchandise" step="0.01" min="0">
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <label>Home Improvement: $</label>
+                        <input type="number" id="home_improvement" step="0.01" min="0">
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <label>Medical: $</label>
+                        <input type="number" id="medical" step="0.01" min="0">
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <label>Personal Care: $</label>
+                        <input type="number" id="personal_care" step="0.01" min="0">
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <label>General Services: $</label>
+                        <input type="number" id="general_services" step="0.01" min="0">
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <label>Government and Non-Profit: $</label>
+                        <input type="number" id="government_and_non_profit" step="0.01" min="0">
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <label>Transportation: $</label>
+                        <input type="number" id="transportation" step="0.01" min="0">
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <label>Travel: $</label>
+                        <input type="number" id="travel" step="0.01" min="0">
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <label>Rent and Utilities: $</label>
+                        <input type="number" id="rent_and_utilities" step="0.01" min="0">
+                    </div>
+                    
+                    <button type="submit">Update Budget</button>
+                </form>
+            </div>
+        </div>
+    </div>
 
     <script>
+        function showStatus(message, isError = false) {
+            const statusDiv = document.getElementById('status');
+            statusDiv.innerHTML = `<div style="color: ${isError ? 'red' : 'green'}; font-weight: bold;">${message}</div>`;
+        }
+
+        function showBudgetButtons() {
+            document.getElementById('get-budget-button').style.display = 'inline-block';
+            document.getElementById('update-budget-button').style.display = 'inline-block';
+        }
+
+        function getPhoneNumber() {
+            const phoneNumber = document.getElementById('phone-number').value.trim();
+            if (!phoneNumber) {
+                showStatus('Please enter a phone number', true);
+                return null;
+            }
+            return phoneNumber;
+        }
+
         document.getElementById('link-button').onclick = function () {
-            console.log('Button clicked'); // Debugging statement
+            const phoneNumber = getPhoneNumber();
+            if (!phoneNumber) return;
 
-            fetch('/api/create_link_token', { method: 'POST' })
-                .then(response => response.json())
-                .then(data => {
-                    console.log('Link token data:', data); // Debugging statement
-                    var handler = Plaid.create({
-                        token: data.link_token,
-                        onSuccess: function (public_token, metadata) {
-                            console.log('Public token:', public_token); // Debugging statement
-                            console.log('Metadata:', metadata); // Debugging statement
+            console.log('Connect bank button clicked');
 
-                            fetch('/api/set_access_token', {
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                },
-                                body: JSON.stringify({
-                                    public_token: public_token,
-                                }),
-                            })
-                            .then(response => response.json())
-                            .then(data => {
-                                console.log('Access token set successfully');
-                            });
-                        },
-                        onExit: function (err, metadata) {
-                            if (err != null) {
-                                console.error('Plaid Link error:', err); // Debugging statement
-                            }
-                        },
-                        onEvent: function (eventName, metadata) {
-                            console.log('Event:', eventName, metadata); // Debugging statement
-                        }
-                    });
-
-                    handler.open();
+            fetch('/api/create_link_token', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    phone_number: phoneNumber
                 })
-                .catch(error => {
-                    console.error('Error fetching link token:', error); // Debugging statement
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('Link token data:', data);
+                var handler = Plaid.create({
+                    token: data.link_token,
+                    onSuccess: function (public_token, metadata) {
+                        console.log('Public token:', public_token);
+                        console.log('Metadata:', metadata);
+
+                        fetch('/api/connect_bank', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                phone_number: phoneNumber,
+                                public_token: public_token
+                            }),
+                        })
+                        .then(response => {
+                            if (response.ok) {
+                                showStatus('Bank account connected successfully!');
+                                showBudgetButtons();
+                            } else {
+                                showStatus('Error connecting bank account', true);
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error connecting bank:', error);
+                            showStatus('Error connecting bank account', true);
+                        });
+                    },
+                    onExit: function (err, metadata) {
+                        if (err != null) {
+                            console.error('Plaid Link error:', err);
+                            showStatus('Bank connection cancelled or failed', true);
+                        }
+                    },
+                    onEvent: function (eventName, metadata) {
+                        console.log('Event:', eventName, metadata);
+                    }
                 });
+
+                handler.open();
+            })
+            .catch(error => {
+                console.error('Error fetching link token:', error);
+                showStatus('Error creating link token', true);
+            });
         };
 
-        document.getElementById('sync-button').onclick = function () {
-            console.log('Sync button clicked'); // Debugging statement
-
-            fetch('/api/new_transactions', { method: 'POST' })
-                .then(response => response.json())
-                .then(data => {
-                    console.log('Transactions data:', data); // Debugging statement
-                    const transactionsDiv = document.getElementById('transactions');
-                    transactionsDiv.innerHTML = '<h2>Latest Transactions</h2>';
-                    const transactionsList = document.createElement('ul');
-                    
-                    if (data.latest_transactions && Array.isArray(data.latest_transactions)) {
-                        console.log('Transactions array:', data.latest_transactions); // Debugging statement
-                        data.latest_transactions.forEach(transaction => {
-                            const listItem = document.createElement('li');
-                            listItem.textContent = `${transaction.date}: ${transaction.name} - ${transaction.amount}`;
-                            transactionsList.appendChild(listItem);
-                        });
-                    } else {
-                        console.log('No transactions array found or it is not an array'); // Debugging statement
-                        const listItem = document.createElement('li');
-                        listItem.textContent = 'No transactions available';
-                        transactionsList.appendChild(listItem);
+        // Add event listener for View Budget button
+        document.addEventListener('DOMContentLoaded', function() {
+            const getBudgetButton = document.getElementById('get-budget-button');
+            if (getBudgetButton) {
+                console.log('View Budget button found, attaching click handler');
+                getBudgetButton.addEventListener('click', function () {
+                    console.log('View Budget button clicked!');
+                    const phoneNumber = getPhoneNumber();
+                    console.log('Phone number:', phoneNumber);
+                    if (!phoneNumber) {
+                        console.log('No phone number, returning early');
+                        return;
                     }
 
-                    transactionsDiv.appendChild(transactionsList);
-                })
-                .catch(error => {
-                    console.error('Error fetching transactions:', error); // Debugging statement
+                    console.log('Making request to /api/budget with phone:', phoneNumber);
+
+                    fetch(`/api/budget?phone_number=${encodeURIComponent(phoneNumber)}`, {
+                        method: 'GET'
+                    })
+                    .then(response => {
+                        console.log('Response received:', response.status, response.statusText);
+                        if (!response.ok) {
+                            throw new Error(`HTTP error! status: ${response.status}`);
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        console.log('Budget data received:', data);
+                        displayBudgetData(data);
+                        populateBudgetForm(data);
+                        document.getElementById('budget-section').style.display = 'block';
+                    })
+                    .catch(error => {
+                        console.error('Error fetching budget:', error);
+                        showStatus('Error fetching budget data', true);
+                    });
                 });
+            } else {
+                console.error('View Budget button not found!');
+            }
+        });
+
+        function displayBudgetData(data) {
+            const budgetDataDiv = document.getElementById('budget-data');
+            budgetDataDiv.innerHTML = '';
+
+            const categories = [
+                'income', 'transfer_in', 'transfer_out', 'loan_payments', 'bank_fees',
+                'entertainment', 'food_and_drink', 'general_merchandise', 'home_improvement',
+                'medical', 'personal_care', 'general_services', 'government_and_non_profit',
+                'transportation', 'travel', 'rent_and_utilities'
+            ];
+
+            categories.forEach(category => {
+                const budget = data.budgets[category] || 0;
+                const spent = data.monthly_totals[category] || 0;
+                
+                const itemDiv = document.createElement('div');
+                
+                const categoryName = category.replace(/_/g, ' ');
+                const percentage = budget > 0 ? (spent / budget * 100).toFixed(1) : 0;
+                const status = spent <= budget ? 'GREEN' : 'RED';
+                
+                itemDiv.innerHTML = `
+                    <strong>${status} ${categoryName}</strong> - 
+                    Spent: $${spent.toFixed(2)} / Budget: $${budget.toFixed(2)} (${percentage}%)
+                `;
+                
+                budgetDataDiv.appendChild(itemDiv);
+            });
+        }
+
+        function populateBudgetForm(data) {
+            const categories = [
+                'income', 'transfer_in', 'transfer_out', 'loan_payments', 'bank_fees',
+                'entertainment', 'food_and_drink', 'general_merchandise', 'home_improvement',
+                'medical', 'personal_care', 'general_services', 'government_and_non_profit',
+                'transportation', 'travel', 'rent_and_utilities'
+            ];
+
+            categories.forEach(category => {
+                const input = document.getElementById(category);
+                if (input) {
+                    input.value = data.budgets[category] || '';
+                }
+            });
+        }
+
+        document.getElementById('update-budget-button').onclick = function () {
+            const phoneNumber = getPhoneNumber();
+            if (!phoneNumber) return;
+
+            // Show the budget form
+            document.getElementById('budget-form').style.display = 'block';
+            showStatus('Budget form is now visible. Fill in the values you want to update and click "Update Budget".');
         };
+
+        document.getElementById('delete-user-button').onclick = function () {
+            const phoneNumber = getPhoneNumber();
+            if (!phoneNumber) return;
+
+            // Add confirmation dialog
+            if (!confirm(`Are you sure you want to delete the user with phone number ${phoneNumber}? This will delete ALL their data including transactions and budgets. This action cannot be undone!`)) {
+                return;
+            }
+
+            fetch('/api/user', {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    phone_number: phoneNumber
+                })
+            })
+            .then(response => {
+                if (response.status === 204) {
+                    showStatus('User deleted successfully!');
+                    // Clear the phone number field
+                    document.getElementById('phone-number').value = '';
+                } else {
+                    showStatus('Error deleting user', true);
+                }
+            })
+            .catch(error => {
+                console.error('Error deleting user:', error);
+                showStatus('Error deleting user', true);
+            });
+        };
+
+        // Handle budget form submission
+        document.getElementById('budget-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const phoneNumber = getPhoneNumber();
+            if (!phoneNumber) return;
+
+            const categories = [
+                'income', 'transfer_in', 'transfer_out', 'loan_payments', 'bank_fees',
+                'entertainment', 'food_and_drink', 'general_merchandise', 'home_improvement',
+                'medical', 'personal_care', 'general_services', 'government_and_non_profit',
+                'transportation', 'travel', 'rent_and_utilities'
+            ];
+
+            const budgets = {};
+            categories.forEach(category => {
+                const input = document.getElementById(category);
+                const value = input.value.trim();
+                if (value && !isNaN(value) && parseFloat(value) >= 0) {
+                    budgets[category] = parseFloat(value);
+                }
+            });
+
+            if (Object.keys(budgets).length === 0) {
+                showStatus('Please enter at least one budget value to update.', true);
+                return;
+            }
+
+            const requestData = {
+                phone_number: phoneNumber,
+                budgets: budgets
+            };
+
+            fetch('/api/budget', {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(requestData)
+            })
+            .then(response => {
+                if (response.ok) {
+                    showStatus('Budget updated successfully!');
+                    // Refresh the budget data
+                    document.getElementById('get-budget-button').click();
+                } else {
+                    showStatus('Error updating budget', true);
+                }
+            })
+            .catch(error => {
+                console.error('Error updating budget:', error);
+                showStatus('Error updating budget', true);
+            });
+        });
     </script>
 </body>
 </html>
