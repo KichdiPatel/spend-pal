@@ -242,8 +242,6 @@ def handle_sms(phone_number: str, message_body: str) -> str | None:
             if not spending_dict:
                 return "💰 No spending this month yet!"
 
-            logger.info(f"Budget data: {budget_dict}, Spending data: {spending_dict}")
-
             # Format the spending and budget data into a message
             status_lines = ["💰 Budget Status:\n"]
             total_spent = 0
