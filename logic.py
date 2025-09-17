@@ -289,9 +289,13 @@ def sync_single_user(phone_number: str) -> None:
     if not user or user.current_reconciling_tx_id:
         return
 
-    transactions = Transactions.query.filter(
-        Transactions.user_id == user.id, Transactions.reconciled.is_(False)
-    ).all()
+    transactions = (
+        Transactions.query.filter(
+            Transactions.user_id == user.id, Transactions.reconciled.is_(False)
+        )
+        .order_by(Transactions.date.asc())
+        .all()
+    )
 
     # If there are no transactions to reconcile, get new transactions from Plaid
     if not transactions:
