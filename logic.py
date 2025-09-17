@@ -97,6 +97,8 @@ def connect_bank(phone_number: str, exchange_response: dict) -> None:
         phone_number,
     )
 
+    sync_single_user(phone_number)
+
 
 def delete_user(phone_number: str) -> None:
     """Delete a user.

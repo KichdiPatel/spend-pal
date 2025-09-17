@@ -189,13 +189,14 @@ def plaid_webhook() -> GeneralResponse:
     return GeneralResponse(message="OK")
 
 
-if __name__ == "__main__":
-    """Run the app. Sync all users every hour."""
+def sync_with_context():
+    with app.app_context():
+        logic.sync_all_users()
+    Timer(3600, sync_with_context).start()
 
-    def sync_with_context():
-        with app.app_context():
-            logic.sync_all_users()
-        Timer(3600, sync_with_context).start()
 
-    sync_with_context()
-    app.run(debug=True, host="0.0.0.0", port=5000, use_reloader=False)
+sync_with_context()
+
+# if __name__ == "__main__":
+#     """Run the app locally."""
+#     app.run(debug=True, host="0.0.0.0", port=5000, use_reloader=False)
