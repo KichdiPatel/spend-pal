@@ -252,10 +252,10 @@ def handle_sms(phone_number: str, message_body: str) -> str | None:
             all_categories = set(budget_dict.keys()) | set(spending_dict.keys())
 
             for category in all_categories:
-                spent = spending_dict.get(category, 0)
-                budget_limit = budget_dict.get(category, 0)
+                spent = float(spending_dict.get(category, 0))
+                budget_limit = float(budget_dict.get(category, 0))
 
-                if spent > 0 or budget_limit > 0:  # Only show categories with activity
+                if spent > 0 or budget_limit > 0:
                     percentage = (spent / budget_limit) * 100 if budget_limit > 0 else 0
                     emoji = "🟢" if spent <= budget_limit else "🔴"
                     display_name = category.replace("_", " ").title()
