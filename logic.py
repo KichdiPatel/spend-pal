@@ -265,9 +265,11 @@ def handle_sms(phone_number: str, message_body: str) -> str | None:
                 display_name = category.replace("_", " ").title()
                 full_spending_data.append((display_name, budget_val, amount))
 
+            logger.info(f"Full spending data: {full_spending_data}")
             if not full_spending_data:
                 return "💰 No spending this month yet!"
 
+            logger.info(f"Full spending DATA}")
             # Format the spending and budget data into a message
             status_lines = ["💰 Budget Status:\n"]
             total_spent = 0
