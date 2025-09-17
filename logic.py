@@ -204,6 +204,10 @@ def handle_sms(phone_number: str, message_body: str) -> str | None:
         except ValueError:
             return False
 
+    logger.info(
+        f"Handling SMS for user {phone_number} with message body {message_body}"
+    )
+
     user = _get_user(phone_number=phone_number)
     message_body = message_body.strip("$")
 
@@ -236,7 +240,9 @@ def handle_sms(phone_number: str, message_body: str) -> str | None:
         return None
 
     else:
+        logger.info("IN ELSE")
         if message_body == "balance":
+            logger.info("IN BALANCE")
             current_month = datetime.now().date().replace(day=1)
             if current_month.month == 12:
                 next_month = current_month.replace(year=current_month.year + 1, month=1)
