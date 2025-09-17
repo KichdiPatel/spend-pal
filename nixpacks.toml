@@ -1,5 +1,8 @@
+[phases.setup]
+nixPkgs = ["poetry"]
+
 [phases.install]
 cmds = ["poetry install --no-dev"]
 
 [start]
-cmd = "poetry run gunicorn app:app"
+cmd = "poetry run gunicorn --bind 0.0.0.0:$PORT app:app"
